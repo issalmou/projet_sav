@@ -1,0 +1,31 @@
+# Environnement virtuel
+.env
+venv/
+.venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Fichiers de logs
+*.log
+
+# Fichiers temporaires
+.pytest_cache/
+.mypy_cache/
+
+# VS Code
+.vscode/
+
+# Base SQLite (si utilisée)
+*.db
+
+# Uploads (si les fichiers sont générés)
+uploads/
+
+# Variables d'environnement
+.env.*
+!.env.example
+
+tâche_semaine/
