@@ -2,9 +2,26 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.core.config import settings
 from app.schemas.role import RoleRead
+
+
+def _validate_supported_language(value: str | None) -> str | None:
+    if value is not None and value not in settings.supported_languages:
+        raise ValueError(f"preferred_language must be one of {settings.supported_languages}")
+    return value
+
+
+def _validate_password_complexity(value: str | None) -> str | None:
+    if value is None:
+        return value
+    if not any(char.isupper() for char in value):
+        raise ValueError("password must contain at least one uppercase letter")
+    if not any(char.isdigit() for char in value):
+        raise ValueError("password must contain at least one digit")
+    return value
 
 
 class UserBase(BaseModel):
@@ -19,11 +36,21 @@ class UserBase(BaseModel):
     consent_given_at: datetime | None = None
     role_id: UUID | None = None
 
+    @field_validator("preferred_language")
+    @classmethod
+    def _check_preferred_language(cls, value: str) -> str:
+        return _validate_supported_language(value)
+
 
 class UserCreate(UserBase):
     """Données attendues pour créer un utilisateur."""
 
-    hashed_password: str = Field(min_length=8, max_length=255)
+    password: str = Field(min_length=8, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password_complexity(cls, value: str) -> str:
+        return _validate_password_complexity(value)
 
 
 class UserUpdate(BaseModel):
@@ -37,7 +64,17 @@ class UserUpdate(BaseModel):
     preferred_language: str | None = Field(default=None, min_length=2, max_length=5)
     consent_given_at: datetime | None = None
     role_id: UUID | None = None
-    hashed_password: str | None = Field(default=None, min_length=8, max_length=255)
+    password: str | None = Field(default=None, min_length=8, max_length=255)
+
+    @field_validator("preferred_language")
+    @classmethod
+    def _check_preferred_language(cls, value: str | None) -> str | None:
+        return _validate_supported_language(value)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password_complexity(cls, value: str | None) -> str | None:
+        return _validate_password_complexity(value)
 
 
 class UserRead(UserBase):

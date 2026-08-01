@@ -1,31 +1,177 @@
-"""Services liés au chat IA.
+"""Service métier du chat IA : conversations, historique et orchestration LLM.
 
-Ce module prépare la couche métier du chat sans implémenter les flux
-conversationnels à ce stade de fondation.
+Ce module gère la persistance (créer une conversation, ajouter un message,
+lire l'historique) ainsi que le workflow complet d'échange avec l'agent IA :
+Utilisateur -> Conversation -> Historique -> LLM -> Réponse -> Sauvegarde ->
+Retour. Chaque méthode qui accède à une conversation existante vérifie
+qu'elle appartient à `user_id`, pour qu'un utilisateur ne puisse jamais lire
+ou modifier les conversations d'un autre.
 """
+from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.exceptions import LLMError
+from app.ai.llm import LLMService
+from app.ai.memory import ConversationMemory
+from app.ai.prompts import build_system_prompt
+from app.models.conversation import Conversation
+from app.models.message import Message
+from app.models.user import User
+from app.schemas.chat import MessageRole
+
+# Titre de secours (troncature du 1er message) si la génération LLM échoue :
+# on préfère un titre mécanique mais lisible à une conversation sans titre.
+_FALLBACK_TITLE_MAX_LENGTH = 60
 
 
 class ChatService:
-	"""Orchestrateur métier pour les conversations."""
+    """Orchestrateur métier pour les conversations, leur historique et l'agent IA."""
 
-	def __init__(self, session: AsyncSession) -> None:
-		self.session = session
+    def __init__(self, session: AsyncSession, llm_service: LLMService | None = None) -> None:
+        self.session = session
+        # Injectable pour les tests (LLMService branché sur un provider factice) ;
+        # par défaut, résout le fournisseur actif via LLM_PROVIDER (.env).
+        self._llm_service = llm_service or LLMService()
 
-	async def start_conversation(self) -> object:
-		"""Prévu pour initialiser une conversation."""
+    async def create_conversation(self, user_id: UUID, title: str | None = None) -> Conversation:
+        """Crée une nouvelle conversation pour `user_id`."""
 
-		raise NotImplementedError("Conversation start will be implemented later")
+        conversation = Conversation(user_id=user_id, title=title)
+        self.session.add(conversation)
+        await self.session.commit()
+        await self.session.refresh(conversation)
+        return conversation
 
-	async def send_message(self, conversation_id: str, message: str) -> object:
-		"""Prévu pour traiter un message dans une conversation."""
+    async def get_conversation(self, conversation_id: UUID, user_id: UUID) -> Conversation:
+        """Retourne la conversation si elle appartient à `user_id`, sinon lève ValueError."""
 
-		raise NotImplementedError("Chat messaging will be implemented later")
+        result = await self.session.execute(
+            select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
+        )
+        conversation = result.scalar_one_or_none()
 
-	async def list_conversations(self) -> list[object]:
-		"""Prévu pour lister les conversations d'un utilisateur."""
+        if conversation is None:
+            raise ValueError("Conversation not found")
 
-		raise NotImplementedError("Conversation listing will be implemented later")
+        return conversation
+
+    async def list_conversations(self, user_id: UUID) -> list[Conversation]:
+        """Liste les conversations de `user_id`, les plus récemment actives d'abord."""
+
+        result = await self.session.execute(
+            select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.updated_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def add_user_message(self, conversation_id: UUID, content: str) -> Message:
+        """Ajoute le message d'un utilisateur à une conversation."""
+
+        return await self._add_message(conversation_id, role="user", content=content)
+
+    async def add_assistant_message(self, conversation_id: UUID, content: str) -> Message:
+        """Ajoute la réponse de l'agent IA à une conversation."""
+
+        return await self._add_message(conversation_id, role="assistant", content=content)
+
+    async def get_history(self, conversation_id: UUID, user_id: UUID) -> list[Message]:
+        """Retourne l'historique ordonné d'une conversation appartenant à `user_id`."""
+
+        await self.get_conversation(conversation_id, user_id)
+
+        result = await self.session.execute(
+            select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def _add_message(self, conversation_id: UUID, *, role: MessageRole, content: str) -> Message:
+        message = Message(conversation_id=conversation_id, role=role, content=content)
+        self.session.add(message)
+        await self.session.commit()
+        await self.session.refresh(message)
+        return message
+
+    async def send_message(
+        self, user: User, content: str, conversation_id: UUID | None = None
+    ) -> tuple[Conversation, Message]:
+        """Traite un message utilisateur et retourne (conversation, réponse de l'agent IA).
+
+        Workflow : conversation (récupérée ou créée) -> message utilisateur
+        sauvegardé -> historique -> appel LLM -> réponse sauvegardée -> retour.
+        """
+
+        if conversation_id is None:
+            conversation = await self.create_conversation(user.id)
+        else:
+            conversation = await self.get_conversation(conversation_id, user.id)
+
+        await self.add_user_message(conversation.id, content)
+
+        history = await self.get_history(conversation.id, user.id)
+        await self._maybe_update_title(conversation, history, user.preferred_language)
+
+        llm_messages = [
+            {"role": "system", "content": build_system_prompt(user.preferred_language)},
+            *ConversationMemory.to_llm_messages(history),
+        ]
+
+        reply_text = await self._llm_service.generate_reply(llm_messages)
+        assistant_message = await self.add_assistant_message(conversation.id, reply_text)
+
+        return conversation, assistant_message
+
+    async def delete_conversation(self, conversation_id: UUID, user_id: UUID) -> None:
+        """Supprime une conversation (et son historique, par cascade DB) appartenant à `user_id`."""
+
+        conversation = await self.get_conversation(conversation_id, user_id)
+        await self.session.delete(conversation)
+        await self.session.commit()
+
+    async def _maybe_update_title(
+        self, conversation: Conversation, history: list[Message], preferred_language: str
+    ) -> None:
+        """Génère le titre après la 1re question, l'affine après la 2e, puis ne le touche plus.
+
+        Une seule question donne souvent un titre trop vague ou mal recadré
+        (ex. "Bonjour" ou une reformulation imprécise) ; la 2e question apporte
+        en général le contexte qui manquait. Le titre est donc reformulé une
+        fois de plus à ce moment-là pour devenir définitif, et n'est plus
+        recalculé ensuite (à partir de la 3e question, cette méthode ne fait
+        plus rien) pour ne pas faire "bouger" le titre affiché au client à
+        chaque nouveau message.
+        """
+
+        user_messages = [message.content for message in history if message.role == "user"]
+
+        if len(user_messages) == 1:
+            content_for_title = user_messages[0]
+        elif len(user_messages) == 2:
+            content_for_title = f"{user_messages[0]} {user_messages[1]}"
+        else:
+            return
+
+        try:
+            title = await self._llm_service.generate_title(content_for_title, preferred_language)
+        except LLMError:
+            title = _fallback_title(content_for_title)
+
+        conversation.title = title
+        self.session.add(conversation)
+        await self.session.commit()
+        await self.session.refresh(conversation)
+
+
+def _fallback_title(content: str, *, max_length: int = _FALLBACK_TITLE_MAX_LENGTH) -> str:
+    """Titre de secours : le message tronqué au dernier mot entier, sans le couper en plein milieu."""
+
+    stripped = content.strip()
+
+    if len(stripped) <= max_length:
+        return stripped
+
+    truncated = stripped[:max_length].rsplit(" ", 1)[0]
+    return f"{truncated}…" if truncated else stripped[:max_length]
 
 
 __all__ = ["ChatService"]

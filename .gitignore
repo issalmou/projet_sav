@@ -4,7 +4,8 @@ venv/
 .venv/
 
 # Cache Python
-__pycache__/
+__pycache__
+.pytest_cache/
 *.py[cod]
 *.pyo
 
@@ -27,5 +28,10 @@ uploads/
 # Variables d'environnement
 .env.*
 !.env.example
+.env
 
-tâche_semaine/
+
+
+tâche_semaine_*.latex
+
+prompting

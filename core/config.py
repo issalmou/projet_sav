@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(..., description="Clé secrète utilisée pour signer les tokens JWT")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 jours
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # --- Base de données ---
@@ -42,7 +43,34 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False
 
     # --- IA / Intégrations ---
+    # Fournisseur actif, choisi automatiquement à partir de cette variable
+    # (cf. app.ai.providers.factory.LLMProviderFactory). Valeurs possibles :
+    # "gemini", "openai", "mistral", "qwen", "llama".
+    LLM_PROVIDER: str = "gemini"
+
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
     OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    MISTRAL_API_KEY: str | None = None
+    MISTRAL_MODEL: str = "mistral-small-latest"
+
+    # Qwen (Alibaba Cloud DashScope) expose une API compatible OpenAI.
+    QWEN_API_KEY: str | None = None
+    QWEN_MODEL: str = "qwen-plus"
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # Llama : servi via une API compatible OpenAI (Ollama en local par défaut,
+    # ou tout endpoint compatible tel que Groq/Together en changeant l'URL).
+    LLAMA_API_KEY: str | None = None
+    LLAMA_MODEL: str = "llama3.1"
+    LLAMA_BASE_URL: str = "http://localhost:11434/v1"
+
+    # --- Bootstrap (compte super admin initial, utilisé par database/seed.py) ---
+    FIRST_ADMIN_EMAIL: str | None = None
+    FIRST_ADMIN_PASSWORD: str | None = None
 
     # --- Journalisation ---
     LOG_LEVEL: str = "INFO"

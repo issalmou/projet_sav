@@ -36,10 +36,14 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Traçabilité du consentement (RGPD)
     consent_given_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Tous les tokens (access et refresh) émis avant cette date sont invalides.
+    # Mis à jour par /auth/logout pour révoquer immédiatement les tokens en circulation.
+    tokens_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     role_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
     )
-    role: Mapped["Role" | None] = relationship(back_populates="users", lazy="joined")
+    role: Mapped["Role | None"] = relationship(back_populates="users", lazy="joined")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

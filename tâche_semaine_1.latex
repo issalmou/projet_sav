@@ -1,0 +1,315 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+\setlist[itemize]{noitemsep, topsep=4pt}
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+\title{T\^ache Semaine 1 -- Documentation explicative du backend AI SAV}
+\author{Projet backend FastAPI / PostgreSQL / SQLAlchemy 2}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Objectif du document}
+Ce fichier explique l'architecture actuelle du backend et le contenu produit pendant la Semaine 1.
+Il sert de guide de lecture pour comprendre le r\^ole de chaque fichier, les d\'ependances utilis\'ees, et la mani\`ere dont les pi\`eces s'assemblent.
+
+\section{Vue d'ensemble du projet}
+Le projet est un backend de plateforme SaaS intelligente de Service Apr\`es-Vente (SAV) bas\'ee sur FastAPI.
+La structure actuelle respecte une architecture modulaire s\'eparant :
+\begin{itemize}
+    \item les points d'entr\'ee HTTP dans \texttt{api/},
+    \item les mod\`eles ORM dans \texttt{models/},
+    \item les sch\'emas Pydantic dans \texttt{schemas/},
+    \item la logique m\'etier dans \texttt{services/},
+    \item la configuration, la s\'ecurit\'e et les d\'ependances transverses dans \texttt{core/},
+    \item l'acc\`es base de donn\'ees dans \texttt{database/},
+    \item les migrations dans \texttt{alembic/},
+    \item le d\'eploiement local dans \texttt{Dockerfile} et \texttt{docker-compose.yml}.
+\end{itemize}
+
+\section{R\^ole des fichiers principaux}
+
+\subsection{\texttt{main.py}}
+\texttt{main.py} est le point d'entr\'ee FastAPI.
+Il :
+\begin{itemize}
+    \item cr\'ee l'application \texttt{FastAPI},
+    \item configure le cycle de vie applicatif (\textit{lifespan}),
+    \item active CORS,
+    \item inclut les routeurs de l'application,
+    \item expose \texttt{GET /} et \texttt{GET /health}.
+\end{itemize}
+
+Le point racine retourne :
+\begin{quote}
+\texttt{\{"message": "AI SAV Backend is running"\}}
+\end{quote}
+
+Le endpoint \texttt{/health} teste aussi la connexion PostgreSQL.
+
+\subsection{\texttt{core/config.py}}
+Ce fichier centralise tous les param\`etres globaux.
+Il utilise \texttt{pydantic-settings} pour charger les variables d'environnement depuis \texttt{.env}.
+
+Il d\'efinit notamment :
+\begin{itemize}
+    \item \texttt{APP\_NAME}, \texttt{APP\_ENV}, \texttt{DEBUG}, \texttt{APP\_VERSION},
+    \item \texttt{SECRET\_KEY}, \texttt{ALGORITHM}, \texttt{ACCESS\_TOKEN\_EXPIRE\_MINUTES},
+    \item \texttt{DATABASE\_URL}, \texttt{DB\_POOL\_SIZE}, \texttt{DB\_MAX\_OVERFLOW}, \texttt{DB\_POOL\_TIMEOUT},
+    \item \texttt{OPENAI\_API\_KEY},
+    \item \texttt{LOG\_LEVEL}, \texttt{LOG\_JSON},
+    \item \texttt{DEFAULT\_LANGUAGE}, \texttt{SUPPORTED\_LANGUAGES}.
+\end{itemize}
+
+Il contient aussi une normalisation de l'URL PostgreSQL pour forcer le sch\'ema async \texttt{postgresql+asyncpg://}.
+
+\subsection{\texttt{core/logger.py}}
+Le logger centralise la journalisation.
+Il fournit :
+\begin{itemize}
+    \item un filtre \texttt{request\_id},
+    \item un formatter JSON maison,
+    \item un formatter texte pour le d\'eveloppement,
+    \item la fonction \texttt{configure\_logging()}.
+\end{itemize}
+
+L'objectif est d'avoir des logs lisibles en local et exploitables en production.
+
+\subsection{\texttt{core/security.py}}
+Ce fichier regroupe les utilitaires de s\'ecurit\'e :
+\begin{itemize}
+    \item \texttt{get\_password\_hash()} pour hacher un mot de passe,
+    \item \texttt{verify\_password()} pour v\'erifier un mot de passe,
+    \item \texttt{create\_access\_token()} pour cr\'eer un JWT,
+    \item \texttt{decode\_access\_token()} pour d\'ecoder un JWT,
+    \item \texttt{get\_token\_subject()} pour lire le sujet du token.
+\end{itemize}
+
+Il utilise \texttt{passlib[bcrypt]} et \texttt{python-jose}.
+
+\subsection{\texttt{core/dependencies.py}}
+Ce fichier fournit les d\'ependances FastAPI r\'eutilisables :
+\begin{itemize}
+    \item \texttt{get\_settings()},
+    \item \texttt{get\_db\_session()},
+    \item \texttt{oauth2\_scheme},
+    \item \texttt{get\_current\_subject()}.
+\end{itemize}
+
+Il sert \`a garder les routeurs fins et \`a isoler la logique d'injection.
+
+\subsection{\texttt{database/base.py}}
+Ce fichier d\'efinit la base ORM SQLAlchemy 2 :
+\begin{itemize}
+    \item \texttt{Base} pour tous les mod\`eles,
+    \item \texttt{UUIDPrimaryKeyMixin} pour les cl\'es primaires UUID,
+    \item \texttt{TimestampMixin} pour \texttt{created\_at} et \texttt{updated\_at},
+    \item une \texttt{MetaData} avec conventions de nommage.
+\end{itemize}
+
+Ces conventions facilitent Alembic et rendent les migrations plus stables.
+
+\subsection{\texttt{database/session.py}}
+Ce fichier configure SQLAlchemy asynchrone.
+Il cr\'ee :
+\begin{itemize}
+    \item \texttt{engine} avec \texttt{create\_async\_engine},
+    \item \texttt{AsyncSessionLocal} avec \texttt{async\_sessionmaker},
+    \item \texttt{get\_db()} pour injecter une session par requ\^ete,
+    \item \texttt{check\_db\_connection()} pour le health check.
+\end{itemize}
+
+\subsection{\texttt{models/role.py}}
+Le mod\`ele \texttt{Role} repr\'esente un r\^ole applicatif.
+Ses champs principaux sont :
+\begin{itemize}
+    \item \texttt{name},
+    \item \texttt{description},
+    \item \texttt{is\_system}.
+\end{itemize}
+
+Il a une relation inverse \texttt{users} vers les utilisateurs.
+
+\subsection{\texttt{models/user.py}}
+Le mod\`ele \texttt{User} d\'efinit les utilisateurs authentifiables.
+Ses champs principaux sont :
+\begin{itemize}
+    \item \texttt{email},
+    \item \texttt{hashed\_password},
+    \item \texttt{full\_name},
+    \item \texttt{phone\_number},
+    \item \texttt{is\_active},
+    \item \texttt{is\_superuser},
+    \item \texttt{preferred\_language},
+    \item \texttt{consent\_given\_at},
+    \item \texttt{role\_id} et la relation \texttt{role}.
+\end{itemize}
+
+\subsection{\texttt{models/product.py}}
+Le mod\`ele \texttt{Product} sert de base au catalogue produit.
+Ses champs sont :
+\begin{itemize}
+    \item \texttt{reference},
+    \item \texttt{name},
+    \item \texttt{category},
+    \item \texttt{description},
+    \item \texttt{warranty\_months}.
+\end{itemize}
+
+\subsection{\texttt{schemas/role.py}}
+Les sch\'emas Pydantic du r\^ole sont :
+\begin{itemize}
+    \item \texttt{RoleBase},
+    \item \texttt{RoleCreate},
+    \item \texttt{RoleUpdate},
+    \item \texttt{RoleRead}.
+\end{itemize}
+
+Ils structurent les donn\'ees d'entr\'ee et de sortie de l'API.
+
+\subsection{\texttt{schemas/user.py}}
+Les sch\'emas Pydantic utilisateur sont :
+\begin{itemize}
+    \item \texttt{UserBase},
+    \item \texttt{UserCreate},
+    \item \texttt{UserUpdate},
+    \item \texttt{UserRead},
+    \item \texttt{UserPublic}.
+\end{itemize}
+
+Ils prot\`egent le mot de passe hach\'e et s\'eparent les vues publiques des vues compl\`etes.
+
+\subsection{\texttt{schemas/product.py}}
+Les sch\'emas Pydantic produit sont :
+\begin{itemize}
+    \item \texttt{ProductBase},
+    \item \texttt{ProductCreate},
+    \item \texttt{ProductUpdate},
+    \item \texttt{ProductRead}.
+\end{itemize}
+
+\subsection{\texttt{api/auth.py}}
+Routeur d'authentification pr\'eparatoire.
+Il expose un statut, un \texttt{/login} et un \texttt{/refresh} marqu\'es \texttt{501 Not Implemented} pour la phase future.
+
+\subsection{\texttt{api/users.py}}
+Routeur utilisateurs pr\'eparatoire.
+Il expose un statut et des endpoints pour lister, lire et mettre \`a jour les utilisateurs.
+
+\subsection{\texttt{api/products.py}}
+Routeur produits pr\'eparatoire.
+Il expose un statut et des endpoints pour lister, lire et cr\'eer un produit.
+
+\subsection{\texttt{api/chat.py}}
+Routeur chat IA pr\'eparatoire.
+Il pose les bases pour les futures sessions de conversation et l'envoi de messages.
+
+\subsection{\texttt{api/tickets.py}}
+Routeur tickets SAV pr\'eparatoire.
+Il pr\'epare les op\'erations de listing, cr\'eation et mise \`a jour des tickets.
+
+\subsection{\texttt{api/documents.py}}
+Routeur documentaire pr\'eparatoire.
+Il expose des points d'entr\'ee pour lister, t\'el\'echarger et supprimer des documents.
+
+\subsection{\texttt{api/dashboard.py}}
+Routeur tableau de bord pr\'eparatoire.
+Il pr\'epare le futur r\'esum\'e global et les m\'etriques du dashboard.
+
+\subsection{\texttt{services/auth\_service.py}}
+Squelette de service pour l'authentification.
+Il contient la structure de base pour authentifier un utilisateur, g\'en\'erer et renouveler des tokens.
+
+\subsection{\texttt{services/product\_service.py}}
+Squelette du service produit.
+Il pr\'epare les op\'erations CRUD de produit.
+
+\subsection{\texttt{services/chat\_service.py}}
+Squelette du service chat.
+Il pr\'epare l'initialisation des conversations, l'envoi de messages et le listing des discussions.
+
+\subsection{\texttt{services/ticket\_service.py}}
+Squelette du service tickets.
+Il pr\'epare les op\'erations de listing, lecture, cr\'eation, mise \`a jour et cloture des tickets.
+
+\subsection{\texttt{services/document.py}}
+Squelette du service documents.
+Il pr\'epare le listing, la lecture, le d\'ep\^ot et la suppression de documents.
+
+\subsection{\texttt{services/dashboard\_service.py}}
+Squelette du service dashboard.
+Il pr\'epare la r\'ecup\'eration d'un r\'esum\'e et des m\'etriques du tableau de bord.
+
+\subsection{\texttt{alembic.ini} et \texttt{alembic/}}
+La migration est configur\'ee avec :
+\begin{itemize}
+    \item \texttt{alembic.ini},
+    \item \texttt{alembic/env.py},
+    \item \texttt{alembic/script.py.mako},
+    \item \texttt{alembic/versions/}.
+\end{itemize}
+
+Le script Alembic importe les mod\`eles pour que \texttt{Base.metadata} connaisse toutes les tables.
+
+\subsection{\texttt{Dockerfile} et \texttt{docker-compose.yml}}
+Le \texttt{Dockerfile} construit l'image du backend FastAPI.
+Le \texttt{docker-compose.yml} d\'eclare :
+\begin{itemize}
+    \item un service PostgreSQL,
+    \item un service backend,
+    \item un volume persistant pour la base.
+\end{itemize}
+
+\section{Ce qui a \`ete r\'ealis\'e en Semaine 1}
+La Semaine 1 avait pour objectif de poser les fondations du backend.
+Les travaux r\'ealis\'es couvrent :
+\begin{enumerate}
+    \item la configuration FastAPI,
+    \item la configuration PostgreSQL,
+    \item la configuration SQLAlchemy 2,
+    \item la configuration Alembic,
+    \item la configuration Docker,
+    \item la gestion des variables d'environnement,
+    \item les param\`etres globaux,
+    \item la connexion \`a la base de donn\'ees,
+    \item Swagger/OpenAPI,
+    \item les mod\`eles User, Role et Product,
+    \item leurs sch\'emas Pydantic,
+    \item les routes API pr\'eparatoires,
+    \item les services pr\'eparatoires,
+    \item les routes racine et health check.
+\end{enumerate}
+
+\section{Lecture pratique du code}
+Si tu veux comprendre le projet rapidement, l'ordre de lecture conseill\'e est :
+\begin{enumerate}
+    \item \texttt{core/config.py}
+    \item \texttt{database/base.py}
+    \item \texttt{database/session.py}
+    \item \texttt{core/security.py}
+    \item \texttt{main.py}
+    \item \texttt{models/}
+    \item \texttt{schemas/}
+    \item \texttt{api/}
+    \item \texttt{services/}
+    \item \texttt{alembic/}
+\end{enumerate}
+
+\section{Conclusion}
+Le backend est aujourd'hui dans un \`etat de fondation propre et coh\'erent.
+La Semaine 1 a pos\'e toutes les briques essentielles pour continuer vers les vraies fonctionnalit\'es m\'etier : authentification JWT, gestion des utilisateurs, chat IA, tickets, documents, produits et tableau de bord.
+
+\end{document}
