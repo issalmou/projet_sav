@@ -2,8 +2,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './contexts/AuthContext'
 import { useAuth } from './contexts/useAuth'
 import { TicketsProvider } from './contexts/TicketsContext'
+import { NotificationsProvider } from './contexts/NotificationsContext'
 import { AdminProvider } from './contexts/AdminContext'
-import { can } from './contexts/roles'
+import { ToastProvider } from './services/toast'
+import { can, homeFor } from './contexts/roles'
 import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
 import ForgotPassword from './components/auth/forgot-password'
@@ -11,6 +13,7 @@ import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import ChatBot from './pages/ChatBot'
+import Notifications from './pages/Notifications'
 import TicketsList from './pages/tickets/TicketsList'
 import TicketDetail from './pages/tickets/TicketDetail'
 import TicketCreate from './pages/tickets/TicketCreate'
@@ -32,15 +35,15 @@ function ProtectedRoute({ children }) {
 }
 
 function PublicRoute({ children }) {
-  const { isAuthenticated } = useAuth()
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  const { user, isAuthenticated } = useAuth()
+  if (isAuthenticated) return <Navigate to={homeFor(user)} replace />
   return children
 }
 
 function Guard({ permission, children }) {
   const { user } = useAuth()
   if (!can(user, permission)) {
-    return <Navigate to={can(user, 'admin.view') ? '/admin' : '/dashboard'} replace />
+    return <Navigate to={homeFor(user)} replace />
   }
   return children
 }
@@ -64,7 +67,7 @@ function AppRoutes() {
         <Route path="/products" element={<div className="p-8"><h1 className="text-2xl font-bold">Produits - Coming Soon</h1></div>} />
         <Route path="/knowledge" element={<div className="p-8"><h1 className="text-2xl font-bold">Knowledge Base - Coming Soon</h1></div>} />
         <Route path="/analytics" element={<div className="p-8"><h1 className="text-2xl font-bold">Analytiques - Coming Soon</h1></div>} />
-        <Route path="/notifications" element={<div className="p-8"><h1 className="text-2xl font-bold">Notifications - Coming Soon</h1></div>} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 
@@ -100,11 +103,14 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AdminProvider>
-          <TicketsProvider>
-            <AppRoutes />
-          </TicketsProvider>
-        </AdminProvider>
+        <NotificationsProvider>
+          <AdminProvider>
+            <TicketsProvider>
+              <ToastProvider />
+              <AppRoutes />
+            </TicketsProvider>
+          </AdminProvider>
+        </NotificationsProvider>
       </AuthProvider>
     </Router>
   )

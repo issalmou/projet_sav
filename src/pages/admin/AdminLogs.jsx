@@ -16,7 +16,7 @@ import {
   EmptyState,
   ConfirmModal,
 } from '../../components/admin/ui'
-import { useToast } from '../../components/admin/useToast'
+import { useToast } from '../../services/toast'
 import { SeverityBadge } from '../../components/admin/badges'
 
 const CATEGORIES = [

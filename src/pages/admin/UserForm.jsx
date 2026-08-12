@@ -113,7 +113,7 @@ export default function UserForm() {
             </Field>
 
             <Field label="Rôle" required>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {ROLE_ORDER.map((role) => (
                   <button
                     key={role}
@@ -189,6 +189,8 @@ export default function UserForm() {
             <strong className="text-slate-700">Permissions du rôle :</strong>{' '}
             {formData.role === 'admin' &&
               'Accès complet : gestion des utilisateurs, documents, intégrations, logs et paramètres.'}
+            {formData.role === 'manager' &&
+              'Accès supervision : gestion de l\u2019équipe support, base documentaire et logs d\u2019activité.'}
             {formData.role === 'agent' &&
               'Accès support : gestion de la base documentaire et consultation des logs d\u2019activité.'}
             {formData.role === 'client' &&

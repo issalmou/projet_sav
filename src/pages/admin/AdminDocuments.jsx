@@ -19,7 +19,7 @@ import {
   EmptyState,
   ConfirmModal,
 } from '../../components/admin/ui'
-import { useToast } from '../../components/admin/useToast'
+import { useToast } from '../../services/toast'
 import { DocTypeBadge, DocStatusBadge } from '../../components/admin/badges'
 
 const PAGE_SIZE = 8

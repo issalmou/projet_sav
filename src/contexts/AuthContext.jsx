@@ -17,7 +17,9 @@ export function AuthProvider({ children }) {
   }, [user])
 
   const login = (userData) => {
-    const name = userData.name || userData.email.split('@')[0]
+    const role = String(userData.role || '').toLowerCase()
+    const email = userData.email || ''
+    const name = userData.name || email.split('@')[0] || 'Utilisateur'
     const initials = name
       .split(' ')
       .map((n) => n[0])
@@ -26,9 +28,10 @@ export function AuthProvider({ children }) {
       .slice(0, 2)
 
     setUser({
+      ...userData,
       name,
-      email: userData.email,
-      role: userData.role || 'Client',
+      email,
+      role,
       initials,
     })
     return true

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Save, Shield, BellRing, KeyRound, User } from 'lucide-react'
 import { useAuth } from '../contexts/useAuth'
 import { PageHeader, Field, Toggle, inputClass } from '../components/admin/ui'
-import { useToast } from '../components/admin/useToast'
+import { useToast } from '../services/toast'
 import { RoleBadge } from '../components/admin/badges'
 
 function Section({ icon: Icon, title, children }) {

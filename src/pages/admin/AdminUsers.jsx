@@ -15,7 +15,7 @@ import {
 import { useAdmin } from '../../contexts/useAdmin'
 import { ROLE_ORDER, ROLES } from '../../contexts/roles'
 import { PageHeader, EmptyState, ConfirmModal } from '../../components/admin/ui'
-import { useToast } from '../../components/admin/useToast'
+import { useToast } from '../../services/toast'
 import { RoleBadge, StatusBadge } from '../../components/admin/badges'
 
 const PAGE_SIZE = 8

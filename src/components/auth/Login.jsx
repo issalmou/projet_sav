@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Cpu, MessageSquare, Sparkles, Loader2 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
-import { ROLES, ROLE_ORDER } from '../../contexts/roles'
+import { ROLES, ROLE_ORDER, homeFor } from '../../contexts/roles'
+import { loginRequest } from '../../api/auth'
 
 function Login() {
   const { login } = useAuth()
@@ -24,27 +25,38 @@ function Login() {
     if (Object.keys(validationErrors).length > 0) return
 
     setLoading(true)
+    setErrors({})
 
-    // TODO: Replace this mock with a real fetch to your backend
-    // const response = await fetch('http://localhost:5000/api/auth/login', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ email: formData.email, password: formData.password }),
-    // })
-    // const data = await response.json()
-
-    // Mock backend response — simulates what your API will return
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    const data = {
-      name: formData.email.split('@')[0].replace(/[._]/g, ' '),
-      email: formData.email,
-      role: demoRole,
+    let data
+    try {
+      data = await loginRequest({
+        email: formData.email,
+        password: formData.password,
+      })
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        // Backend non démarré en local : simulation avec le rôle DEV ONLY choisi.
+        await new Promise((resolve) => setTimeout(resolve, 800))
+        data = {
+          name: formData.email.split('@')[0].replace(/[._]/g, ' '),
+          email: formData.email,
+          role: demoRole,
+          devOnly: true,
+        }
+      } else {
+        setErrors({ form: err.message || 'Authentification échouée.' })
+        setLoading(false)
+        return
+      }
     }
 
+    // Le rôle provient exclusivement de la réponse de l'API (jamais du client).
+    const role = data.role || data.user?.role
+    const success = login({ ...data, role })
+
     setLoading(false)
-    const success = login(data)
     if (success) {
-      navigate('/dashboard')
+      navigate(homeFor({ role }), { replace: true })
     }
   }
 
@@ -150,6 +162,12 @@ function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {errors.form && (
+              <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-medium">
+                {errors.form}
+              </div>
+            )}
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
                 Email Address
@@ -201,27 +219,35 @@ function Login() {
               </label>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Rôle de démonstration
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {ROLE_ORDER.map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => setDemoRole(role)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      demoRole === role
-                        ? ROLES[role].color + ' ring-2 ring-offset-1 ' + ROLES[role].dot.replace('bg-', 'ring-')
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {ROLES[role].label}
-                  </button>
-                ))}
+            {import.meta.env.DEV && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  Rôle de démonstration
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-wide ring-1 ring-amber-300">
+                    DEV ONLY
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {ROLE_ORDER.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setDemoRole(role)}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        demoRole === role
+                          ? ROLES[role].color + ' ring-2 ring-offset-1 ' + ROLES[role].dot.replace('bg-', 'ring-')
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {ROLES[role].label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Jamais affiché en production : le rôle vient toujours du backend.
+                </p>
               </div>
-            </div>
+            )}
 
             <button
               type="submit"

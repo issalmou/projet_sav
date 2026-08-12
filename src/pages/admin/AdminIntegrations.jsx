@@ -18,7 +18,7 @@ import {
   ConfirmModal,
   inputClass,
 } from '../../components/admin/ui'
-import { useToast } from '../../components/admin/useToast'
+import { useToast } from '../../services/toast'
 import { IntegrationBadge } from '../../components/admin/badges'
 
 const PROVIDERS = [

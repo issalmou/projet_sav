@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Save, Building2, Shield, BellRing, Cpu } from 'lucide-react'
 import { useAdmin } from '../../contexts/useAdmin'
 import { PageHeader, Field, Toggle, inputClass } from '../../components/admin/ui'
-import { useToast } from '../../components/admin/useToast'
+import { useToast } from '../../services/toast'
 
 function Section({ icon: Icon, title, children }) {
   return (
