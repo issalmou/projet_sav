@@ -38,7 +38,13 @@ class ConversationDetail(ConversationPublic):
 
 
 class ChatMessageRequest(BaseModel):
-    """Message envoyé par l'utilisateur à l'agent IA."""
+    """Message envoyé par l'utilisateur à l'agent IA.
+
+    Pas de `product_id` ici : à ce stade du parcours, on ne sait pas encore
+    sur quel produit porte la question du client. La recherche RAG
+    (`ChatService.send_message`) s'effectue donc sur l'ensemble des
+    documents (recherche globale, `product_id=None` côté service).
+    """
 
     conversation_id: UUID | None = None
     content: str = Field(min_length=1, max_length=8000)

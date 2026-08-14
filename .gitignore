@@ -30,8 +30,10 @@ uploads/
 !.env.example
 .env
 
-
-
 tâche_semaine_*.latex
 
 prompting
+
+knowledge_base/*
+
+tests/*

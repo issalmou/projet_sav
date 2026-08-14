@@ -7,9 +7,13 @@ python-dotenv
 pydantic-settings
 passlib[bcrypt]
 python-jose
+python-multipart
+pypdf
+python-docx
 langchain
 chromadb
 openai
 google-genai
 mistralai
+sentence-transformers
 asyncpg>=0.27.0

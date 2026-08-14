@@ -2,10 +2,11 @@
 
 Ce module gère la persistance (créer une conversation, ajouter un message,
 lire l'historique) ainsi que le workflow complet d'échange avec l'agent IA :
-Utilisateur -> Conversation -> Historique -> LLM -> Réponse -> Sauvegarde ->
-Retour. Chaque méthode qui accède à une conversation existante vérifie
-qu'elle appartient à `user_id`, pour qu'un utilisateur ne puisse jamais lire
-ou modifier les conversations d'un autre.
+Utilisateur -> Conversation -> Historique -> Recherche RAG -> Contexte
+documentaire -> LLM -> Réponse -> Sauvegarde -> Retour. 
+Chaque méthode qui accède à une conversation existante vérifie qu'elle
+appartient à `user_id`, pour qu'un utilisateur ne puisse jamais lire ou
+modifier les conversations d'un autre.
 """
 from uuid import UUID
 
@@ -15,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.exceptions import LLMError
 from app.ai.llm import LLMService
 from app.ai.memory import ConversationMemory
-from app.ai.prompts import build_system_prompt
+from app.ai.prompts import LOW_CONFIDENCE_INSTRUCTION, build_context_section, build_system_prompt
+from app.ai.rag.retriever import RetrievedChunk, RetrieverService
+from app.core.logger import logger
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
@@ -29,11 +32,18 @@ _FALLBACK_TITLE_MAX_LENGTH = 60
 class ChatService:
     """Orchestrateur métier pour les conversations, leur historique et l'agent IA."""
 
-    def __init__(self, session: AsyncSession, llm_service: LLMService | None = None) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        llm_service: LLMService | None = None,
+        retriever: RetrieverService | None = None,
+    ) -> None:
         self.session = session
-        # Injectable pour les tests (LLMService branché sur un provider factice) ;
-        # par défaut, résout le fournisseur actif via LLM_PROVIDER (.env).
+        # Injectables pour les tests (LLMService/RetrieverService branchés sur
+        # des doubles factices) ; par défaut, résolvent le fournisseur actif
+        # via LLM_PROVIDER / EMBEDDING_PROVIDER (.env).
         self._llm_service = llm_service or LLMService()
+        self._retriever = retriever or RetrieverService()
 
     async def create_conversation(self, user_id: UUID, title: str | None = None) -> Conversation:
         """Crée une nouvelle conversation pour `user_id`."""
@@ -93,12 +103,18 @@ class ChatService:
         return message
 
     async def send_message(
-        self, user: User, content: str, conversation_id: UUID | None = None
+        self,
+        user: User,
+        content: str,
+        conversation_id: UUID | None = None,
+        product_id: UUID | None = None,
     ) -> tuple[Conversation, Message]:
         """Traite un message utilisateur et retourne (conversation, réponse de l'agent IA).
 
         Workflow : conversation (récupérée ou créée) -> message utilisateur
-        sauvegardé -> historique -> appel LLM -> réponse sauvegardée -> retour.
+        sauvegardé -> historique -> recherche RAG (filtrée par `product_id`
+        si connu, sinon globale) -> contexte documentaire injecté dans le
+        prompt système -> appel LLM -> réponse sauvegardée -> retour.
         """
 
         if conversation_id is None:
@@ -111,8 +127,14 @@ class ChatService:
         history = await self.get_history(conversation.id, user.id)
         await self._maybe_update_title(conversation, history, user.preferred_language)
 
+        retrieved_chunks = await self._retrieve_context(content, product_id)
+
+        system_prompt = build_system_prompt(user.preferred_language) + build_context_section(retrieved_chunks)
+        if product_id is None and RetrieverService.is_low_confidence(retrieved_chunks):
+            system_prompt += LOW_CONFIDENCE_INSTRUCTION
+
         llm_messages = [
-            {"role": "system", "content": build_system_prompt(user.preferred_language)},
+            {"role": "system", "content": system_prompt},
             *ConversationMemory.to_llm_messages(history),
         ]
 
@@ -120,6 +142,21 @@ class ChatService:
         assistant_message = await self.add_assistant_message(conversation.id, reply_text)
 
         return conversation, assistant_message
+
+    async def _retrieve_context(self, content: str, product_id: UUID | None) -> list[RetrievedChunk]:
+        """Interroge le RAG pour `content`, sans jamais faire échouer le chat en cas de souci.
+
+        Contrairement au LLM (indispensable au chat), le RAG est une couche
+        d'enrichissement : si la recherche échoue (ex: ChromaDB indisponible,
+        quota d'embeddings épuisé), l'agent doit pouvoir répondre quand même,
+        sans contexte documentaire, plutôt que de renvoyer une erreur au client.
+        """
+
+        try:
+            return await self._retriever.retrieve(content, product_id=product_id)
+        except Exception:
+            logger.warning("RAG retrieval failed, answering without documentary context", exc_info=True)
+            return []
 
     async def delete_conversation(self, conversation_id: UUID, user_id: UUID) -> None:
         """Supprime une conversation (et son historique, par cascade DB) appartenant à `user_id`."""
@@ -131,16 +168,7 @@ class ChatService:
     async def _maybe_update_title(
         self, conversation: Conversation, history: list[Message], preferred_language: str
     ) -> None:
-        """Génère le titre après la 1re question, l'affine après la 2e, puis ne le touche plus.
-
-        Une seule question donne souvent un titre trop vague ou mal recadré
-        (ex. "Bonjour" ou une reformulation imprécise) ; la 2e question apporte
-        en général le contexte qui manquait. Le titre est donc reformulé une
-        fois de plus à ce moment-là pour devenir définitif, et n'est plus
-        recalculé ensuite (à partir de la 3e question, cette méthode ne fait
-        plus rien) pour ne pas faire "bouger" le titre affiché au client à
-        chaque nouveau message.
-        """
+        """Génère le titre après la 1re question, l'affine après la 2e, puis ne le touche plus."""
 
         user_messages = [message.content for message in history if message.role == "user"]
 

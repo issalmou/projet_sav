@@ -7,6 +7,7 @@ import pytest_asyncio
 from app.schemas.user import UserCreate
 from app.services.chat_service import ChatService
 from app.services.user_service import UserService
+from conftest import NullRetriever
 
 
 @pytest_asyncio.fixture
@@ -26,7 +27,7 @@ async def chat_user(db_session):
 
 @pytest.mark.asyncio
 async def test_create_conversation(db_session, chat_user):
-    service = ChatService(db_session)
+    service = ChatService(db_session, retriever=NullRetriever())
 
     conversation = await service.create_conversation(chat_user.id, title="Erreur E17")
 
@@ -37,7 +38,7 @@ async def test_create_conversation(db_session, chat_user):
 
 @pytest.mark.asyncio
 async def test_add_user_and_assistant_messages_builds_history(db_session, chat_user):
-    service = ChatService(db_session)
+    service = ChatService(db_session, retriever=NullRetriever())
     conversation = await service.create_conversation(chat_user.id)
 
     user_message = await service.add_user_message(conversation.id, "Mon imprimante affiche E17")
@@ -53,7 +54,7 @@ async def test_add_user_and_assistant_messages_builds_history(db_session, chat_u
 
 @pytest.mark.asyncio
 async def test_get_history_is_chronologically_ordered(db_session, chat_user):
-    service = ChatService(db_session)
+    service = ChatService(db_session, retriever=NullRetriever())
     conversation = await service.create_conversation(chat_user.id)
 
     for content in ["premier", "deuxième", "troisième"]:
@@ -71,7 +72,7 @@ async def test_list_conversations_returns_only_owner_conversations(db_session, c
         UserCreate(email=f"other.{uuid.uuid4().hex[:10]}@example.com", password="ValidPass1")
     )
 
-    chat_service = ChatService(db_session)
+    chat_service = ChatService(db_session, retriever=NullRetriever())
     own_conversation = await chat_service.create_conversation(chat_user.id, title="À moi")
     await chat_service.create_conversation(other_user.id, title="Pas à moi")
 
@@ -90,7 +91,7 @@ async def test_get_history_for_another_users_conversation_raises_value_error(db_
         UserCreate(email=f"other.{uuid.uuid4().hex[:10]}@example.com", password="ValidPass1")
     )
 
-    chat_service = ChatService(db_session)
+    chat_service = ChatService(db_session, retriever=NullRetriever())
     conversation = await chat_service.create_conversation(other_user.id)
 
     with pytest.raises(ValueError):
@@ -102,7 +103,7 @@ async def test_get_history_for_another_users_conversation_raises_value_error(db_
 
 @pytest.mark.asyncio
 async def test_get_conversation_unknown_id_raises_value_error(db_session, chat_user):
-    service = ChatService(db_session)
+    service = ChatService(db_session, retriever=NullRetriever())
 
     with pytest.raises(ValueError):
         await service.get_conversation(uuid.uuid4(), chat_user.id)

@@ -10,6 +10,7 @@ from app.ai.providers.base import LLMProvider, Message as LLMMessage
 from app.schemas.user import UserCreate
 from app.services.chat_service import ChatService
 from app.services.user_service import UserService
+from conftest import NullRetriever
 
 
 class FakeProvider(LLMProvider):
@@ -65,7 +66,7 @@ async def chat_user(db_session):
 @pytest.mark.asyncio
 async def test_send_message_creates_conversation_when_none_given(db_session, chat_user):
     fake_provider = FakeProvider(reply="Bonjour, comment puis-je vous aider ?")
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider), retriever=NullRetriever())
 
     conversation, assistant_message = await chat_service.send_message(chat_user, "Bonjour")
 
@@ -77,7 +78,7 @@ async def test_send_message_creates_conversation_when_none_given(db_session, cha
 @pytest.mark.asyncio
 async def test_send_message_persists_user_and_assistant_messages(db_session, chat_user):
     fake_provider = FakeProvider(reply="ok")
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider), retriever=NullRetriever())
 
     conversation, _ = await chat_service.send_message(chat_user, "Mon imprimante affiche E17")
 
@@ -91,7 +92,7 @@ async def test_send_message_persists_user_and_assistant_messages(db_session, cha
 @pytest.mark.asyncio
 async def test_send_message_reuses_existing_conversation_and_sends_full_history(db_session, chat_user):
     fake_provider = FakeProvider(reply="deuxième réponse")
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider), retriever=NullRetriever())
 
     conversation, _ = await chat_service.send_message(chat_user, "premier message")
     conversation_again, assistant_message = await chat_service.send_message(
@@ -110,7 +111,7 @@ async def test_send_message_reuses_existing_conversation_and_sends_full_history(
 @pytest.mark.asyncio
 async def test_send_message_includes_system_prompt_first(db_session, chat_user):
     fake_provider = FakeProvider()
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=fake_provider), retriever=NullRetriever())
 
     await chat_service.send_message(chat_user, "Bonjour")
 
@@ -125,7 +126,7 @@ async def test_send_message_to_another_users_conversation_raises_value_error(db_
         UserCreate(email=f"other.{uuid.uuid4().hex[:10]}@example.com", password="ValidPass1")
     )
 
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=FakeProvider()))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=FakeProvider()), retriever=NullRetriever())
     conversation, _ = await chat_service.send_message(other_user, "Bonjour")
 
     with pytest.raises(ValueError):
@@ -138,7 +139,7 @@ async def test_send_message_to_another_users_conversation_raises_value_error(db_
 @pytest.mark.asyncio
 async def test_send_message_sets_llm_generated_title_on_new_conversation(db_session, chat_user):
     provider = SequencedProvider(["Erreur E17 imprimante", "Vérifiez le bac papier."])
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider), retriever=NullRetriever())
 
     conversation, _ = await chat_service.send_message(chat_user, "Mon imprimante affiche Erreur E17")
 
@@ -154,7 +155,7 @@ async def test_send_message_sets_llm_generated_title_on_new_conversation(db_sess
 async def test_send_message_refines_title_after_second_question(db_session, chat_user):
     # Ordre des appels LLM : titre(Q1) -> réponse(Q1) -> titre affiné(Q1+Q2) -> réponse(Q2).
     provider = SequencedProvider(["Bonjour", "réponse 1", "Erreur E17 imprimante", "réponse 2"])
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider), retriever=NullRetriever())
 
     conversation, _ = await chat_service.send_message(chat_user, "Bonjour")
     assert conversation.title == "Bonjour"
@@ -177,7 +178,7 @@ async def test_send_message_does_not_touch_title_from_third_question_onward(db_s
     provider = SequencedProvider(
         ["titre 1", "réponse 1", "titre final", "réponse 2", "réponse 3"]
     )
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider), retriever=NullRetriever())
 
     conversation, _ = await chat_service.send_message(chat_user, "premier message")
     conversation, _ = await chat_service.send_message(
@@ -195,7 +196,7 @@ async def test_send_message_does_not_touch_title_from_third_question_onward(db_s
 @pytest.mark.asyncio
 async def test_send_message_falls_back_to_truncated_title_when_llm_fails(db_session, chat_user):
     provider = SequencedProvider([LLMRequestError("quota exceeded"), "réponse malgré tout"])
-    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider))
+    chat_service = ChatService(db_session, llm_service=LLMService(provider=provider), retriever=NullRetriever())
 
     long_message = " ".join(["mot"] * 30)
     conversation, assistant_message = await chat_service.send_message(chat_user, long_message)

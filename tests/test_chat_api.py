@@ -20,6 +20,7 @@ from app.main import app
 from app.schemas.user import UserCreate
 from app.services.chat_service import ChatService
 from app.services.user_service import UserService
+from conftest import NullRetriever
 
 
 class FakeProvider(LLMProvider):
@@ -33,7 +34,7 @@ class FakeProvider(LLMProvider):
 
 
 async def _override_get_chat_service(db: AsyncSession = Depends(get_db_session)) -> ChatService:
-    return ChatService(db, llm_service=LLMService(provider=FakeProvider()))
+    return ChatService(db, llm_service=LLMService(provider=FakeProvider()), retriever=NullRetriever())
 
 
 @pytest_asyncio.fixture(autouse=True)

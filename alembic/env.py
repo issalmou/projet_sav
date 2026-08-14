@@ -16,6 +16,7 @@ from app.database.base import Base
 
 # Import des modèles pour enregistrer les tables dans Base.metadata.
 import app.models.conversation  # noqa: F401
+import app.models.document  # noqa: F401
 import app.models.message  # noqa: F401
 import app.models.product  # noqa: F401
 import app.models.role  # noqa: F401

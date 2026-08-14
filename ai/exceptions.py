@@ -17,4 +17,23 @@ class LLMRequestError(LLMError):
     """L'appel au fournisseur LLM a échoué (réseau, quota, réponse invalide...)."""
 
 
-__all__ = ["LLMError", "LLMProviderNotConfiguredError", "LLMRequestError"]
+class EmbeddingError(Exception):
+    """Erreur générique de la couche embeddings (RAG, semaine 4)."""
+
+
+class EmbeddingProviderNotConfiguredError(EmbeddingError):
+    """Le fournisseur d'embeddings demandé est inconnu ou sa clé API n'est pas configurée."""
+
+
+class EmbeddingRequestError(EmbeddingError):
+    """L'appel au fournisseur d'embeddings a échoué (réseau, quota, réponse invalide...)."""
+
+
+__all__ = [
+    "EmbeddingError",
+    "EmbeddingProviderNotConfiguredError",
+    "EmbeddingRequestError",
+    "LLMError",
+    "LLMProviderNotConfiguredError",
+    "LLMRequestError",
+]

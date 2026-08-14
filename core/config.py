@@ -68,6 +68,22 @@ class Settings(BaseSettings):
     LLAMA_MODEL: str = "llama3.1"
     LLAMA_BASE_URL: str = "http://localhost:11434/v1"
 
+    # --- Embeddings (RAG)---
+    # Fournisseur indépendant de LLM_PROVIDER (cf. app.ai.embeddings.factory) :
+    # un provider peut servir le chat sans faire d'embeddings performants, et
+    # inversement. Valeurs possibles : "gemini", "openai", "mistral", "qwen",
+    # "llama". Réutilise les clés API / URLs déjà définies ci-dessus.
+    EMBEDDING_PROVIDER: str = "gemini"
+
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    MISTRAL_EMBEDDING_MODEL: str = "mistral-embed"
+    QWEN_EMBEDDING_MODEL: str = "text-embedding-v3"
+    # Modèle Ollama dédié à l'embedding (distinct du modèle de chat LLAMA_MODEL).
+    LLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    # E5 : modèle local (sentence-transformers), gratuit, sans clé API.
+    E5_EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
+
     # --- Bootstrap (compte super admin initial, utilisé par database/seed.py) ---
     FIRST_ADMIN_EMAIL: str | None = None
     FIRST_ADMIN_PASSWORD: str | None = None
@@ -79,6 +95,13 @@ class Settings(BaseSettings):
     # --- Multilingue ---
     DEFAULT_LANGUAGE: str = "fr"
     SUPPORTED_LANGUAGES: str = "fr,en,ar"
+
+    # --- Documents (base de connaissances / RAG) ---
+    UPLOAD_DIR: Path = BASE_DIR / "uploads"
+    MAX_UPLOAD_SIZE_MB: int = 20
+
+    # --- Vector Database (RAG) ---
+    CHROMA_DB_DIR: Path = BASE_DIR / "chroma_db"
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

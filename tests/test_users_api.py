@@ -2,67 +2,10 @@
 import uuid
 
 import pytest
-import pytest_asyncio
 
-from app.schemas.user import UserCreate
 from app.services.user_service import UserService
-
-
-def _unique_email(prefix: str) -> str:
-    return f"{prefix}.{uuid.uuid4().hex[:10]}@example.com"
-
-
-async def _create_and_login(client, db_session, role_id=None, is_superuser=False):
-    """Crée un utilisateur directement via le service (hors API) et retourne (user, access_token)."""
-
-    service = UserService(db_session)
-    email = _unique_email("rbac")
-    user = await service.create_user(
-        UserCreate(email=email, password="ValidPass1", role_id=role_id, is_superuser=is_superuser)
-    )
-
-    login = await client.post("/api/v1/auth/login", json={"email": email, "password": "ValidPass1"})
-    token = login.json()["access_token"]
-
-    return user, token
-
-
-@pytest_asyncio.fixture
-async def actors(client, db_session, role_ids):
-    """Un utilisateur de chaque rôle (+ un super admin), nettoyés après le test."""
-
-    super_admin, super_token = await _create_and_login(
-        client, db_session, role_id=role_ids["administrateur"], is_superuser=True
-    )
-    admin, admin_token = await _create_and_login(client, db_session, role_id=role_ids["administrateur"])
-    responsable, responsable_token = await _create_and_login(client, db_session, role_id=role_ids["responsable_sav"])
-    technicien, technicien_token = await _create_and_login(client, db_session, role_id=role_ids["technicien"])
-    client_user, client_token = await _create_and_login(client, db_session, role_id=role_ids["client"])
-
-    yield {
-        "super_admin": (super_admin, super_token),
-        "admin": (admin, admin_token),
-        "responsable": (responsable, responsable_token),
-        "technicien": (technicien, technicien_token),
-        "client": (client_user, client_token),
-    }
-
-    service = UserService(db_session)
-    for user, _ in [
-        (super_admin, None),
-        (admin, None),
-        (responsable, None),
-        (technicien, None),
-        (client_user, None),
-    ]:
-        still_there = await service.get_user_by_id(user.id)
-        if still_there is not None:
-            await db_session.delete(still_there)
-    await db_session.commit()
-
-
-def _auth_headers(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
+from conftest import auth_headers as _auth_headers
+from conftest import unique_email as _unique_email
 
 
 @pytest.mark.asyncio
