@@ -108,6 +108,7 @@ class ChatService:
         content: str,
         conversation_id: UUID | None = None,
         product_id: UUID | None = None,
+        extra_system_instructions: str | None = None,
     ) -> tuple[Conversation, Message]:
         """Traite un message utilisateur et retourne (conversation, réponse de l'agent IA).
 
@@ -115,6 +116,10 @@ class ChatService:
         sauvegardé -> historique -> recherche RAG (filtrée par `product_id`
         si connu, sinon globale) -> contexte documentaire injecté dans le
         prompt système -> appel LLM -> réponse sauvegardée -> retour.
+
+        `extra_system_instructions`, si fourni, est ajouté à la fin du prompt
+        système (ex: instruction de statut du diagnostic automatique, cf.
+        `DiagnosticService`), sans changer le workflow du chat classique.
         """
 
         if conversation_id is None:
@@ -132,6 +137,8 @@ class ChatService:
         system_prompt = build_system_prompt(user.preferred_language) + build_context_section(retrieved_chunks)
         if product_id is None and RetrieverService.is_low_confidence(retrieved_chunks):
             system_prompt += LOW_CONFIDENCE_INSTRUCTION
+        if extra_system_instructions:
+            system_prompt += extra_system_instructions
 
         llm_messages = [
             {"role": "system", "content": system_prompt},

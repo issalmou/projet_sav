@@ -20,6 +20,7 @@ import app.models.document  # noqa: F401
 import app.models.message  # noqa: F401
 import app.models.product  # noqa: F401
 import app.models.role  # noqa: F401
+import app.models.ticket  # noqa: F401
 import app.models.user  # noqa: F401
 
 config = context.config

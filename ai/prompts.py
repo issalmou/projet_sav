@@ -61,6 +61,29 @@ LOW_CONFIDENCE_INSTRUCTION = (
     "cela permettra une recherche documentaire plus précise."
 )
 
+# Marqueurs machine-lisibles attendus en fin de réponse en mode diagnostic
+# (cf. DIAGNOSTIC_STATUS_INSTRUCTION). Doivent rester synchronisés avec
+# `DiagnosticService._STATUS_MARKER_PATTERN` / `app.utils.constants.DiagnosticStatus`.
+DIAGNOSTIC_STATUS_MARKERS = {
+    "RESOLU": "resolved",
+    "EN_COURS": "in_progress",
+    "A_ESCALADER": "escalate",
+}
+
+DIAGNOSTIC_STATUS_INSTRUCTION = (
+    "\n\nTu es en mode diagnostic de panne (CDC : diagnostic automatique). "
+    "Après avoir rédigé ta réponse, ajoute une toute dernière ligne, seule, contenant exactement "
+    "l'un de ces marqueurs selon la situation :\n"
+    "- [STATUT: RESOLU] si le problème du client est résolu, ou s'il s'agissait d'une simple question "
+    "à laquelle tu as répondu complètement.\n"
+    "- [STATUT: EN_COURS] si tu as besoin d'une information supplémentaire ou d'une vérification de la "
+    "part du client avant de conclure.\n"
+    "- [STATUT: A_ESCALADER] si, après vérification, tu ne parviens pas à résoudre le problème et qu'il "
+    "faut créer un ticket de support et transférer le client à un technicien.\n\n"
+    "Ne mentionne et n'explique jamais ce marqueur au client dans le texte de ta réponse : "
+    "il doit apparaître seul, sur la toute dernière ligne."
+)
+
 
 def build_context_section(chunks: list[RetrievedChunk]) -> str:
     """Formate les chunks retrouvés par le RAG en section de contexte pour le prompt système.
@@ -82,6 +105,8 @@ def build_context_section(chunks: list[RetrievedChunk]) -> str:
 
 
 __all__ = [
+    "DIAGNOSTIC_STATUS_INSTRUCTION",
+    "DIAGNOSTIC_STATUS_MARKERS",
     "LOW_CONFIDENCE_INSTRUCTION",
     "SYSTEM_PROMPT_SAV",
     "build_context_section",

@@ -41,4 +41,38 @@ class DocumentStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-__all__ = ["DocumentCategory", "DocumentStatus", "DocumentType", "RoleName"]
+class DiagnosticStatus(str, Enum):
+    """Statut d'une réponse de diagnostic automatique (CDC semaine 5).
+
+    Déterminé par le LLM lui-même via une instruction dédiée
+    (cf. app.ai.prompts.DIAGNOSTIC_STATUS_INSTRUCTION), interprété par
+    DiagnosticService.
+    """
+
+    RESOLVED = "resolved"
+    IN_PROGRESS = "in_progress"
+    ESCALATE = "escalate"
+
+
+class TicketStatus(str, Enum):
+    """Cycle de vie d'un ticket de support SAV (CDC semaine 5/6).
+
+    Valeurs synchronisées avec le CheckConstraint `status_valid` du modèle
+    `Ticket` (déjà migré) ; cet enum sert à la validation côté schémas
+    Pydantic, sur le même principe que DocumentStatus.
+    """
+
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+
+__all__ = [
+    "DiagnosticStatus",
+    "DocumentCategory",
+    "DocumentStatus",
+    "DocumentType",
+    "RoleName",
+    "TicketStatus",
+]
