@@ -35,7 +35,17 @@ async def users_status() -> dict[str, str]:
     return {"message": "User routes are ready"}
 
 
-@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant, ou rôle demandé hors du périmètre de l'appelant."},
+        409: {"description": "Un utilisateur avec cet email existe déjà."},
+        422: {"description": "Payload invalide (email, mot de passe ou langue non conformes)."},
+    },
+)
 async def create_user(
     payload: UserCreate,
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
@@ -60,7 +70,15 @@ async def create_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
-@router.get("/", response_model=list[UserRead], status_code=status.HTTP_200_OK)
+@router.get(
+    "/",
+    response_model=list[UserRead],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé au staff)."},
+    },
+)
 async def list_users(
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -76,7 +94,16 @@ async def list_users(
     return await UserService(db).list_users(limit=limit, offset=offset, role_names=role_names)
 
 
-@router.get("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{user_id}",
+    response_model=UserRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Utilisateur ciblé hors du périmètre de l'appelant."},
+        404: {"description": "Utilisateur introuvable."},
+    },
+)
 async def get_user(
     user_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -94,7 +121,18 @@ async def get_user(
     return target
 
 
-@router.put("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
+@router.put(
+    "/{user_id}",
+    response_model=UserRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Modification de son propre rôle/statut, ou utilisateur/rôle hors périmètre."},
+        404: {"description": "Utilisateur introuvable."},
+        409: {"description": "Un utilisateur avec cet email existe déjà."},
+        422: {"description": "Payload invalide."},
+    },
+)
 async def update_user(
     user_id: UUID,
     payload: UserUpdate,

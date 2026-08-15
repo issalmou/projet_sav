@@ -13,7 +13,9 @@ class MistralProvider(LLMProvider):
         if not settings.MISTRAL_API_KEY:
             raise LLMProviderNotConfiguredError("MISTRAL_API_KEY is not configured")
 
-        self._client = Mistral(api_key=settings.MISTRAL_API_KEY)
+        # `timeout_ms` est natif au SDK `mistralai` (cf. settings.LLM_REQUEST_TIMEOUT_SECONDS).
+        timeout_ms = int(settings.LLM_REQUEST_TIMEOUT_SECONDS * 1000)
+        self._client = Mistral(api_key=settings.MISTRAL_API_KEY, timeout_ms=timeout_ms)
         self._model = settings.MISTRAL_MODEL
 
     async def agenerate(self, messages: list[Message], **kwargs: object) -> str:

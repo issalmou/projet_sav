@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
 	PYTHONUNBUFFERED=1 \
-	PIP_NO_CACHE_DIR=1
+	PIP_NO_CACHE_DIR=1 \
+	PYTHONPATH=/app
 
 WORKDIR /app
 
@@ -15,7 +16,11 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
 	&& pip install -r requirements.txt
 
-COPY . .
+# Le code s'importe partout comme `app.xxx` (ex: CMD ci-dessous) : le
+# contexte de build est le contenu du package `app`, il doit donc être copié
+# dans un sous-dossier `app/` et non à la racine `/app`, sous peine de
+# `ModuleNotFoundError: No module named 'app'` au démarrage d'uvicorn.
+COPY . ./app
 
 EXPOSE 8000
 

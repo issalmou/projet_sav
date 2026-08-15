@@ -227,6 +227,7 @@ async def test_delete_another_users_conversation_is_404(client, chat_user, db_se
     await db_session.commit()
 
 
+@pytest.mark.external
 @pytest.mark.asyncio
 @pytest.mark.skipif(not settings.GEMINI_API_KEY, reason="GEMINI_API_KEY is not configured")
 async def test_send_message_real_call_with_gemini_through_http(client, chat_user):

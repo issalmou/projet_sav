@@ -54,4 +54,21 @@ class ProductWarrantyRead(BaseModel):
     warranty_months: int | None
 
 
-__all__ = ["ProductBase", "ProductCreate", "ProductRead", "ProductUpdate", "ProductWarrantyRead"]
+class WarrantyUpdate(BaseModel):
+    """Données attendues pour modifier la garantie d'un produit (CDC semaine 6 : API Garanties).
+
+    Option A validée : seule `warranty_months` est modifiable via `/warranties`
+    (les autres champs du produit passent par `PATCH /products/{id}`).
+    """
+
+    warranty_months: int = Field(ge=0)
+
+
+__all__ = [
+    "ProductBase",
+    "ProductCreate",
+    "ProductRead",
+    "ProductUpdate",
+    "ProductWarrantyRead",
+    "WarrantyUpdate",
+]

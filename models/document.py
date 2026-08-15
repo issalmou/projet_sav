@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.utils.constants import DocumentCategory, DocumentStatus, DocumentType
+from app.utils.constants import DocumentStatus
 
 if TYPE_CHECKING:
     from app.models.product import Product

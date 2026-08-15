@@ -1,0 +1,31 @@
+# Secrets — ne jamais inclure dans l'image
+.env
+.env.*
+!.env.example
+
+# Environnements Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Git
+.git/
+.gitignore
+
+# Données locales générées (recréées au démarrage / montées en volume)
+chroma_db/
+uploads/
+
+# Tests et outils de dev
+tests/
+.pytest_cache/
+.mypy_cache/
+
+# Documentation de développement (non nécessaire à l'exécution)
+tâche_semaine_*.latex
+prompting
+
+# IDE
+.vscode/
+.claude/

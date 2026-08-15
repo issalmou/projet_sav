@@ -29,7 +29,19 @@ async def documents_status() -> dict[str, str]:
     return {"message": "Document routes are ready"}
 
 
-@router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Format de fichier non supporté (attendu : PDF, DOCX ou TXT)."},
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
+        404: {"description": "Un des product_ids fournis est introuvable."},
+        413: {"description": "Fichier dépassant la taille maximale autorisée."},
+        422: {"description": "Métadonnées invalides (title, category ou version)."},
+    },
+)
 async def upload_document(
     current_user: Annotated[User, Depends(require_document_manager)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -56,7 +68,15 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc))
 
 
-@router.get("/", response_model=list[DocumentRead], status_code=status.HTTP_200_OK)
+@router.get(
+    "/",
+    response_model=list[DocumentRead],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
+    },
+)
 async def list_documents(
     current_user: Annotated[User, Depends(require_document_manager)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -66,7 +86,14 @@ async def list_documents(
     return await DocumentService(db).list_documents(current_user)
 
 
-@router.post("/", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post(
+    "/",
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
+    },
+)
 async def create_document_placeholder(
     current_user: Annotated[User, Depends(require_document_manager)],
 ) -> dict[str, str]:
@@ -75,7 +102,15 @@ async def create_document_placeholder(
     return {"detail": "This endpoint is not implemented; use POST /documents/upload"}
 
 
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Document créé par un autre Responsable SAV (non superuser)."},
+        404: {"description": "Document introuvable."},
+    },
+)
 async def delete_document(
     document_id: UUID,
     current_user: Annotated[User, Depends(require_document_manager)],

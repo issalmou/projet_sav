@@ -38,7 +38,10 @@ class GeminiProvider(LLMProvider):
         if not settings.GEMINI_API_KEY:
             raise LLMProviderNotConfiguredError("GEMINI_API_KEY is not configured")
 
-        self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        # `HttpOptions.timeout` est en millisecondes (SDK google-genai).
+        timeout_ms = int(settings.LLM_REQUEST_TIMEOUT_SECONDS * 1000)
+        http_options = types.HttpOptions(timeout=timeout_ms)
+        self._client = genai.Client(api_key=settings.GEMINI_API_KEY, http_options=http_options)
         self._model = settings.GEMINI_MODEL
 
     async def agenerate(self, messages: list[Message], **kwargs: object) -> str:

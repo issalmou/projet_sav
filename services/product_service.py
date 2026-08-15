@@ -14,10 +14,14 @@ class ProductService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list_products(self) -> list[Product]:
-        """Liste tous les produits (catalogue partagé, pas de filtrage par utilisateur)."""
+    async def list_products(self, limit: int = 50, offset: int = 0) -> list[Product]:
+        """Liste les produits (catalogue partagé, pas de filtrage par utilisateur).
 
-        result = await self.session.execute(select(Product).order_by(Product.name))
+        Pagination simple (`limit`/`offset`), même pattern que `UserService.list_users`.
+        """
+
+        query = select(Product).order_by(Product.name).offset(offset).limit(limit)
+        result = await self.session.execute(query)
         return list(result.scalars().all())
 
     async def get_product(self, product_id: UUID) -> Product:

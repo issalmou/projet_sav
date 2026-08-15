@@ -148,13 +148,16 @@ class TicketService:
         )
         return result.scalars().first()
 
-    async def list_tickets(self, user: User) -> list[Ticket]:
-        """Liste les tickets visibles par `user`, selon les règles d'accès validées."""
+    async def list_tickets(self, user: User, limit: int = 50, offset: int = 0) -> list[Ticket]:
+        """Liste les tickets visibles par `user`, selon les règles d'accès validées.
+
+        Pagination simple (`limit`/`offset`), même pattern que `UserService.list_users`.
+        """
 
         query = select(Ticket).options(*_TICKET_RELATIONSHIPS).order_by(Ticket.created_at.desc())
         query = _scope_to_visible_tickets(query, user)
 
-        result = await self.session.execute(query)
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
     async def get_ticket(self, ticket_id: UUID, user: User) -> Ticket:

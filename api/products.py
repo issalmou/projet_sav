@@ -36,7 +36,17 @@ async def products_status() -> dict[str, str]:
     return {"message": "Product routes are ready"}
 
 
-@router.post("/", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ProductRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur/responsable_sav)."},
+        409: {"description": "Un produit avec cette référence existe déjà."},
+        422: {"description": "Payload invalide."},
+    },
+)
 async def create_product(
     payload: ProductCreate,
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
@@ -50,17 +60,39 @@ async def create_product(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
-@router.get("/", response_model=list[ProductRead], status_code=status.HTTP_200_OK)
+@router.get(
+    "/",
+    response_model=list[ProductRead],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+    },
+)
 async def list_products(
     current_user: Annotated[User, Depends(get_current_user)],
     product_service: Annotated[ProductService, Depends(get_product_service)],
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[ProductRead]:
-    """Liste tous les produits (lecture ouverte à tout utilisateur authentifié)."""
+    """Liste les produits (lecture ouverte à tout utilisateur authentifié).
 
-    return await product_service.list_products()
+    Pagination `limit`/`offset`, même pattern que `GET /users` (`api/users.py`).
+    """
+
+    return await product_service.list_products(limit=limit, offset=offset)
 
 
-@router.get("/{product_id}", response_model=ProductRead, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{product_id}",
+    response_model=ProductRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        404: {"description": "Produit introuvable."},
+    },
+)
 async def get_product(
     product_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -74,7 +106,17 @@ async def get_product(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.patch("/{product_id}", response_model=ProductRead, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{product_id}",
+    response_model=ProductRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur/responsable_sav)."},
+        404: {"description": "Produit introuvable."},
+        422: {"description": "Payload invalide."},
+    },
+)
 async def update_product(
     product_id: UUID,
     payload: ProductUpdate,
@@ -89,7 +131,15 @@ async def update_product(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{product_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur/responsable_sav)."},
+        404: {"description": "Produit introuvable."},
+    },
+)
 async def delete_product(
     product_id: UUID,
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],

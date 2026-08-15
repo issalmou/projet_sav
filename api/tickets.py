@@ -46,7 +46,18 @@ async def tickets_status() -> dict[str, str]:
     return {"message": "Ticket routes are ready"}
 
 
-@router.post("/", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=TicketRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "client_id référence un utilisateur existant mais n'ayant pas le rôle client."},
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur/responsable_sav)."},
+        404: {"description": "client_id introuvable."},
+        422: {"description": "Payload invalide (title/description/client_id)."},
+    },
+)
 async def create_ticket(
     payload: TicketCreate,
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
@@ -64,17 +75,39 @@ async def create_ticket(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
 
-@router.get("/", response_model=list[TicketRead], status_code=status.HTTP_200_OK)
+@router.get(
+    "/",
+    response_model=list[TicketRead],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+    },
+)
 async def list_tickets(
     current_user: Annotated[User, Depends(get_current_user)],
     ticket_service: Annotated[TicketService, Depends(get_ticket_service)],
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[TicketRead]:
-    """Liste les tickets visibles par l'utilisateur authentifié (règles d'accès : tâche 5)."""
+    """Liste les tickets visibles par l'utilisateur authentifié (règles d'accès : tâche 5).
 
-    return await ticket_service.list_tickets(current_user)
+    Pagination `limit`/`offset`, même pattern que `GET /users` (`api/users.py`).
+    """
+
+    return await ticket_service.list_tickets(current_user, limit=limit, offset=offset)
 
 
-@router.get("/{ticket_id}", response_model=TicketRead, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{ticket_id}",
+    response_model=TicketRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        404: {"description": "Ticket introuvable, ou non visible par l'appelant."},
+    },
+)
 async def get_ticket(
     ticket_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -88,7 +121,18 @@ async def get_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
-@router.patch("/{ticket_id}", response_model=TicketRead, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{ticket_id}",
+    response_model=TicketRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "assigned_technician_id référence un utilisateur n'ayant pas le rôle technicien."},
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ticket visible mais non modifiable par l'appelant (ex : client)."},
+        404: {"description": "Ticket introuvable, ou non visible par l'appelant."},
+        422: {"description": "Payload invalide (statut ou champs)."},
+    },
+)
 async def update_ticket(
     ticket_id: UUID,
     payload: TicketUpdate,

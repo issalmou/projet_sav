@@ -47,8 +47,13 @@ async def seed_first_admin() -> None:
     """
 
     async with AsyncSessionLocal() as session:
+        # `.scalars().first()` et non `.scalar_one_or_none()` : ceci est une
+        # verification d'existence ("au moins un superuser existe deja ?"),
+        # pas une lecture par cle unique -- is_superuser=True n'a aucune
+        # contrainte d'unicite (plusieurs administrateurs peuvent legitimement
+        # exister), donc plusieurs lignes sont un cas normal, pas une erreur.
         existing = await session.execute(select(User).where(User.is_superuser.is_(True)))
-        if existing.scalar_one_or_none() is not None:
+        if existing.scalars().first() is not None:
             return
 
         if not settings.FIRST_ADMIN_EMAIL or not settings.FIRST_ADMIN_PASSWORD:

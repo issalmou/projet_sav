@@ -29,6 +29,12 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
+    description=(
+        "API backend de la plateforme IA SAV & Support Technique : authentification JWT, "
+        "gestion des utilisateurs et des rôles, chat IA avec recherche documentaire (RAG) et "
+        "mémoire conversationnelle, gestion des tickets de support, des produits et de leur "
+        "garantie, ainsi que de la base documentaire."
+    ),
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,

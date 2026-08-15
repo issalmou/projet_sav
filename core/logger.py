@@ -44,14 +44,6 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
-class TextFormatter(logging.Formatter):
-    """Format texte lisible pour le développement local."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        record.request_id = getattr(record, "request_id", "-")
-        return super().format(record)
-
-
 def configure_logging() -> None:
     formatter_name = "json" if settings.LOG_JSON else "text"
 

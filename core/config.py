@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # "gemini", "openai", "mistral", "qwen", "llama".
     LLM_PROVIDER: str = "gemini"
 
+    # Timeout explicite sur les appels LLM (Semaine 7, Tâche 2 : optimisation).
+    # Aucune valeur n'est imposée par le CDC ; 30s est un choix technique
+    # raisonnable pour une réponse de chat synchrone (le CDC ne fixe pas de
+    # borne, mais liste le "temps de réponse" comme critère de recette),
+    # appliqué uniformément aux 5 providers (ai/providers/) via leur SDK
+    # respectif plutôt que par une couche de timeout maison.
+    LLM_REQUEST_TIMEOUT_SECONDS: float = 30.0
+
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 

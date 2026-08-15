@@ -4,8 +4,10 @@ sqlalchemy
 psycopg2-binary
 alembic
 python-dotenv
+pydantic
+email-validator
 pydantic-settings
-passlib[bcrypt]
+bcrypt
 python-jose
 python-multipart
 pypdf
@@ -16,4 +18,9 @@ openai
 google-genai
 mistralai
 sentence-transformers
+torch
 asyncpg>=0.27.0
+# Tests
+pytest
+pytest-asyncio
+httpx

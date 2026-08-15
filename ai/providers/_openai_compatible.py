@@ -8,13 +8,15 @@ from openai import AsyncOpenAI
 
 from app.ai.exceptions import LLMRequestError
 from app.ai.providers.base import LLMProvider, Message
+from app.core.config import settings
 
 
 class OpenAICompatibleProvider(LLMProvider):
     """Fournisseur générique pour toute API compatible OpenAI chat/completions."""
 
     def __init__(self, *, api_key: str, model: str, base_url: str | None = None) -> None:
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        # Timeout natif du SDK `openai` (en secondes) — cf. settings.LLM_REQUEST_TIMEOUT_SECONDS.
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=settings.LLM_REQUEST_TIMEOUT_SECONDS)
         self._model = model
 
     async def agenerate(self, messages: list[Message], **kwargs: object) -> str:

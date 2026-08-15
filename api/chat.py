@@ -31,7 +31,18 @@ async def get_chat_service(db: Annotated[AsyncSession, Depends(get_db_session)])
     return ChatService(db)
 
 
-@router.post("/message", response_model=ChatMessageResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/message",
+    response_model=ChatMessageResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        404: {"description": "conversation_id fourni mais introuvable, ou n'appartenant pas à l'appelant."},
+        422: {"description": "Payload invalide (content vide ou trop long)."},
+        503: {"description": "Le fournisseur LLM configuré a échoué à générer une réponse."},
+    },
+)
 async def send_message(
     payload: ChatMessageRequest,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -51,7 +62,15 @@ async def send_message(
     return ChatMessageResponse(conversation_id=conversation.id, message=assistant_message)
 
 
-@router.get("/conversations", response_model=list[ConversationPublic], status_code=status.HTTP_200_OK)
+@router.get(
+    "/conversations",
+    response_model=list[ConversationPublic],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+    },
+)
 async def list_conversations(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
@@ -62,7 +81,14 @@ async def list_conversations(
 
 
 @router.get(
-    "/conversations/{conversation_id}", response_model=ConversationDetail, status_code=status.HTTP_200_OK
+    "/conversations/{conversation_id}",
+    response_model=ConversationDetail,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        404: {"description": "Conversation introuvable, ou n'appartenant pas à l'appelant."},
+    },
 )
 async def get_conversation(
     conversation_id: UUID,
@@ -86,7 +112,15 @@ async def get_conversation(
     )
 
 
-@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        404: {"description": "Conversation introuvable, ou n'appartenant pas à l'appelant."},
+    },
+)
 async def delete_conversation(
     conversation_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],

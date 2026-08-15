@@ -25,7 +25,12 @@ async def auth_status() -> dict[str, str]:
     return {"message": "Auth routes are ready"}
 
 
-@router.post("/login", response_model=Token, status_code=status.HTTP_200_OK)
+@router.post(
+    "/login",
+    response_model=Token,
+    status_code=status.HTTP_200_OK,
+    responses={401: {"description": "Email ou mot de passe incorrect."}},
+)
 async def login(
     credentials: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -47,14 +52,29 @@ async def login(
     return Token(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
 
 
-@router.get("/me", response_model=UserPublic, status_code=status.HTTP_200_OK)
+@router.get(
+    "/me",
+    response_model=UserPublic,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+    },
+)
 async def read_current_user(current_user: Annotated[User, Depends(get_current_user)]) -> User:
     """Retourne le profil de l'utilisateur actuellement authentifié."""
 
     return current_user
 
 
-@router.post("/logout", status_code=status.HTTP_200_OK)
+@router.post(
+    "/logout",
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+    },
+)
 async def logout(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -65,7 +85,12 @@ async def logout(
     return {"message": "Successfully logged out"}
 
 
-@router.post("/refresh", response_model=Token, status_code=status.HTTP_200_OK)
+@router.post(
+    "/refresh",
+    response_model=Token,
+    status_code=status.HTTP_200_OK,
+    responses={401: {"description": "Refresh token invalide, expiré, ou compte associé inexistant/désactivé."}},
+)
 async def refresh(
     payload: RefreshRequest,
     db: Annotated[AsyncSession, Depends(get_db_session)],
