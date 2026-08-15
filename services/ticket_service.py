@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.permissions import STAFF_ROLES, get_role_name
 from app.models.ticket import Ticket
 from app.models.user import User
-from app.schemas.ticket import TicketCreate, TicketUpdate
+from app.schemas.ticket import TicketAutoCreate, TicketCreate, TicketUpdate
 from app.utils.constants import RoleName, TicketStatus
 
 _TICKET_RELATIONSHIPS = (
@@ -49,6 +49,14 @@ class InvalidTechnicianRoleError(Exception):
     """
 
 
+class InvalidClientRoleError(Exception):
+    """`client_id` référence un utilisateur existant, mais qui n'a pas le rôle client.
+
+    Même principe que `InvalidTechnicianRoleError` : pas une sous-classe de
+    `ValueError` (utilisateur introuvable → 404, mauvais rôle → 400).
+    """
+
+
 class TicketService:
     """Orchestrateur métier pour les tickets."""
 
@@ -56,22 +64,63 @@ class TicketService:
         self.session = session
 
     async def create_ticket(
-        self, user: User, data: TicketCreate, *, conversation_id: UUID | None = None
+        self, user: User, data: TicketAutoCreate, *, conversation_id: UUID | None = None
     ) -> Ticket:
-        """Crée un ticket appartenant à `user`.
+        """Création automatique (self-service) : le ticket appartient toujours à `user`.
 
-        `TicketCreate` ne porte pas de `client_id` (schéma, tâche 4) : le
-        propriétaire est toujours l'appelant authentifié, jamais une valeur
-        fournie par le client de l'API. `conversation_id` n'est pas non plus
-        sur le schéma public : il n'est renseigné que par un appelant interne
-        (`DiagnosticService`, tâche 7), jamais depuis une requête HTTP.
+        Utilisé exclusivement par `DiagnosticService` (tâche 7) — jamais par
+        la route HTTP publique, réservée au staff depuis la correction RBAC
+        de la semaine 6 (voir `create_ticket_for_client`). `TicketAutoCreate`
+        ne porte pas de `client_id` : le propriétaire est toujours
+        l'utilisateur pour lequel le service agit.
         """
 
-        ticket = Ticket(
+        return await self._persist_new_ticket(
             title=data.title,
             description=data.description,
             product_id=data.product_id,
             client_id=user.id,
+            conversation_id=conversation_id,
+        )
+
+    async def create_ticket_for_client(self, staff_user: User, data: TicketCreate) -> Ticket:
+        """Création manuelle par le staff, au nom du client `data.client_id` (correction RBAC, semaine 6).
+
+        Décision de conception (PAS une exigence du CDC) : seul le staff
+        (`STAFF_ROLES`/superuser) peut créer un ticket manuellement, et
+        toujours au nom d'un client précis — jamais pour lui-même. Vérifié
+        ici en plus de la route (défense en profondeur, même principe que
+        `_can_view`/`_can_modify` ailleurs dans ce service) : `client_id`
+        doit référencer un utilisateur existant ayant le rôle `client`.
+        """
+
+        if not _is_staff_or_superuser(staff_user):
+            raise TicketPermissionError("Only staff can create a ticket on behalf of another client")
+
+        await self._ensure_is_client(data.client_id)
+
+        return await self._persist_new_ticket(
+            title=data.title,
+            description=data.description,
+            product_id=data.product_id,
+            client_id=data.client_id,
+            conversation_id=None,
+        )
+
+    async def _persist_new_ticket(
+        self,
+        *,
+        title: str,
+        description: str,
+        product_id: UUID | None,
+        client_id: UUID,
+        conversation_id: UUID | None,
+    ) -> Ticket:
+        ticket = Ticket(
+            title=title,
+            description=description,
+            product_id=product_id,
+            client_id=client_id,
             conversation_id=conversation_id,
         )
         self.session.add(ticket)
@@ -157,6 +206,20 @@ class TicketService:
         if get_role_name(candidate) != RoleName.TECHNICIEN.value:
             raise InvalidTechnicianRoleError("assigned_technician_id must reference a user with the technicien role")
 
+    async def _ensure_is_client(self, client_id: UUID) -> None:
+        """Vérifie que `client_id` référence un utilisateur existant ayant le rôle client.
+
+        Même distinction que `_ensure_is_technician` : `ValueError` (404) si
+        introuvable, `InvalidClientRoleError` (400) si le rôle ne convient pas.
+        """
+
+        candidate = await self.session.get(User, client_id)
+        if candidate is None:
+            raise ValueError("Client not found")
+
+        if get_role_name(candidate) != RoleName.CLIENT.value:
+            raise InvalidClientRoleError("client_id must reference a user with the client role")
+
     async def _get_visible_ticket_or_raise(self, ticket_id: UUID, user: User) -> Ticket:
         result = await self.session.execute(
             select(Ticket).options(*_TICKET_RELATIONSHIPS).where(Ticket.id == ticket_id)
@@ -199,6 +262,20 @@ def _can_modify(ticket: Ticket, user: User) -> bool:
     return False
 
 
+def _is_staff_or_superuser(user: User) -> bool:
+    """Staff (`STAFF_ROLES`) ou superuser : condition commune à toutes les actions de gestion.
+
+    Factorisé pour que `_can_reassign` (tâche 8) et `create_ticket_for_client`
+    (correction RBAC, semaine 6) partagent exactement la même règle plutôt
+    que de la redéfinir séparément.
+    """
+
+    if user.is_superuser:
+        return True
+
+    return get_role_name(user) in STAFF_ROLES
+
+
 def _can_reassign(user: User) -> bool:
     """Seul le staff (`STAFF_ROLES`) ou un superuser peut modifier `assigned_technician_id`.
 
@@ -209,10 +286,7 @@ def _can_reassign(user: User) -> bool:
     l'utilisateur concerné lui-même.
     """
 
-    if user.is_superuser:
-        return True
-
-    return get_role_name(user) in STAFF_ROLES
+    return _is_staff_or_superuser(user)
 
 
 def _scope_to_visible_tickets(query, user: User):
@@ -228,4 +302,4 @@ def _scope_to_visible_tickets(query, user: User):
     return query.where(Ticket.client_id == user.id)
 
 
-__all__ = ["InvalidTechnicianRoleError", "TicketPermissionError", "TicketService"]
+__all__ = ["InvalidClientRoleError", "InvalidTechnicianRoleError", "TicketPermissionError", "TicketService"]

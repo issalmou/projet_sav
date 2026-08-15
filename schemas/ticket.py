@@ -18,14 +18,27 @@ class TicketBase(BaseModel):
 
 
 class TicketCreate(TicketBase):
-    """Données attendues pour créer un ticket.
+    """Données attendues pour créer un ticket manuellement, via l'API publique.
 
-    `client_id` n'apparaît pas ici : le propriétaire d'un ticket est
-    toujours l'utilisateur authentifié à l'origine de la requête (résolu
-    dans TicketService/la route), jamais une valeur fournie dans le corps
-    de la requête. `conversation_id` n'apparaît pas non plus : renseigné
-    uniquement par le workflow de diagnostic automatique (tâche 7), jamais
-    à la création manuelle d'un ticket.
+    Réservé au staff (Responsable SAV / Administrateur / superuser,
+    correction RBAC semaine 6) : le staff crée toujours un ticket au nom
+    d'un client précis, jamais pour lui-même — `client_id` est donc
+    obligatoire ici. `conversation_id` n'apparaît volontairement pas :
+    renseigné uniquement par le workflow de diagnostic automatique
+    (tâche 7), jamais à la création manuelle.
+    """
+
+    client_id: UUID
+
+
+class TicketAutoCreate(TicketBase):
+    """Données utilisées uniquement par le workflow de diagnostic automatique.
+
+    Jamais exposé via l'API publique (`DiagnosticService` uniquement,
+    tâche 7) : le propriétaire est toujours l'utilisateur pour lequel le
+    service agit (le client en train de discuter), jamais une valeur
+    fournie dans un payload — c'est pourquoi `client_id` n'existe pas ici,
+    contrairement à `TicketCreate`.
     """
 
 
@@ -54,4 +67,4 @@ class TicketRead(TicketBase):
     updated_at: datetime
 
 
-__all__ = ["TicketBase", "TicketCreate", "TicketRead", "TicketUpdate"]
+__all__ = ["TicketAutoCreate", "TicketBase", "TicketCreate", "TicketRead", "TicketUpdate"]

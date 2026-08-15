@@ -20,7 +20,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.ticket import Ticket
 from app.models.user import User
-from app.schemas.ticket import TicketCreate
+from app.schemas.ticket import TicketAutoCreate
 from app.services.chat_service import ChatService
 from app.services.ticket_service import TicketService
 from app.utils.constants import DiagnosticStatus
@@ -123,7 +123,7 @@ class DiagnosticService:
             return existing
 
         description = f"Question du client : {user_content}\n\nRéponse du diagnostic automatique : {assistant_content}"
-        data = TicketCreate(
+        data = TicketAutoCreate(
             title=conversation.title or _FALLBACK_TICKET_TITLE,
             description=description,
             product_id=product_id,

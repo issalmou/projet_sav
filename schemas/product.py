@@ -39,4 +39,19 @@ class ProductRead(ProductBase):
     updated_at: datetime
 
 
-__all__ = ["ProductBase", "ProductCreate", "ProductUpdate", "ProductRead"]
+class ProductWarrantyRead(BaseModel):
+    """Garantie d'un produit (CDC semaine 6 : API Garanties).
+
+    Option A validée : propriété statique du produit (`Product.warranty_months`),
+    pas de garantie par instance (aucune date d'achat/expiration dans le modèle).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    reference: str
+    name: str
+    warranty_months: int | None
+
+
+__all__ = ["ProductBase", "ProductCreate", "ProductRead", "ProductUpdate", "ProductWarrantyRead"]

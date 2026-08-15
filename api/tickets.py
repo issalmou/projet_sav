@@ -1,10 +1,12 @@
 """Routes de gestion des tickets SAV (CDC semaine 5/6).
 
-Toutes les routes sont protégées par JWT (`get_current_user`) uniquement :
-aucun rôle n'est exclu au niveau route, car chaque rôle a un accès légitime
-(scope différent) aux tickets. Le filtrage par rôle/ownership est appliqué
-entièrement dans `TicketService` (tâche 5) — la route ne porte que la
-responsabilité HTTP (mapping des exceptions métier en codes de statut).
+Toutes les routes sont protégées par JWT (`get_current_user`), sauf
+`POST /` : réservée au staff (`require_roles(*STAFF_ROLES)`) depuis la
+correction RBAC de la semaine 6 — seul le Responsable SAV/Administrateur
+(ou un superuser) peut créer un ticket manuellement, toujours au nom d'un
+client précis. Le reste des règles d'accès (visibilité, modification) est
+appliqué entièrement dans `TicketService` (tâche 5) — la route ne porte que
+la responsabilité HTTP (mapping des exceptions métier en codes de statut).
 """
 from typing import Annotated
 from uuid import UUID
@@ -13,9 +15,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db_session
+from app.core.permissions import STAFF_ROLES, require_roles
 from app.models.user import User
 from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
-from app.services.ticket_service import InvalidTechnicianRoleError, TicketPermissionError, TicketService
+from app.services.ticket_service import (
+    InvalidClientRoleError,
+    InvalidTechnicianRoleError,
+    TicketPermissionError,
+    TicketService,
+)
 
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -41,12 +49,19 @@ async def tickets_status() -> dict[str, str]:
 @router.post("/", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
 async def create_ticket(
     payload: TicketCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
     ticket_service: Annotated[TicketService, Depends(get_ticket_service)],
 ) -> TicketRead:
-    """Crée un ticket de support, toujours au nom de l'utilisateur authentifié."""
+    """Crée un ticket au nom d'un client précis (réservé au staff, correction RBAC semaine 6)."""
 
-    return await ticket_service.create_ticket(current_user, payload)
+    try:
+        return await ticket_service.create_ticket_for_client(current_user, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except InvalidClientRoleError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except TicketPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
 
 @router.get("/", response_model=list[TicketRead], status_code=status.HTTP_200_OK)

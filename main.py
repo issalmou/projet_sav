@@ -11,6 +11,7 @@ from app.api.documents import router as documents_router
 from app.api.products import router as products_router
 from app.api.tickets import router as tickets_router
 from app.api.users import router as users_router
+from app.api.warranties import router as warranties_router
 from app.core.config import settings
 from app.core.logger import configure_logging, logger
 from app.database.session import check_db_connection
@@ -48,6 +49,7 @@ app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
 app.include_router(products_router, prefix=settings.API_V1_PREFIX)
 app.include_router(tickets_router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router, prefix=settings.API_V1_PREFIX)
+app.include_router(warranties_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", status_code=status.HTTP_200_OK)
