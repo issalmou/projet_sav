@@ -14,9 +14,12 @@ import {
   Trash2,
   Clock,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Ticket
 } from 'lucide-react'
 import { useAuth } from '../contexts/useAuth'
+import { useTickets } from '../contexts/useTickets'
+import { useNavigate } from 'react-router-dom'
 
 const quickSuggestions = [
   'Mon appareil ne démarre pas',
@@ -42,7 +45,7 @@ function TypingIndicator() {
   )
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onCreateTicket, onNavigateToTicket }) {
   const isUser = message.role === 'user'
 
   return (
@@ -71,6 +74,24 @@ function MessageBubble({ message }) {
           <Clock className="w-3 h-3 text-slate-400" />
           <span className="text-[10px] text-slate-400 font-medium">{message.timestamp}</span>
         </div>
+        {!isUser && message.showCreateTicket && (
+          <button
+            onClick={onCreateTicket}
+            className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all active:scale-95"
+          >
+            <Ticket className="w-4 h-4" />
+            Créer un ticket
+          </button>
+        )}
+        {!isUser && message.ticketCreated && (
+          <button
+            onClick={() => onNavigateToTicket(message.ticketId)}
+            className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl transition-all active:scale-95"
+          >
+            <Ticket className="w-4 h-4" />
+            Voir le ticket {message.ticketId}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -78,12 +99,15 @@ function MessageBubble({ message }) {
 
 function ChatBot() {
   const { user } = useAuth()
+  const { createTicket } = useTickets()
+  const navigate = useNavigate()
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [pendingTicket, setPendingTicket] = useState(null)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const idCounter = useRef(100)
@@ -101,7 +125,15 @@ function ChatBot() {
     const delay = 1200 + Math.random() * 1500
 
     setTimeout(() => {
-      const responses = [
+      const shouldCreateTicket = userMessage.toLowerCase().includes('ticket') || 
+                                  userMessage.toLowerCase().includes('agent') ||
+                                  userMessage.toLowerCase().includes('problème') ||
+                                  userMessage.toLowerCase().includes('aide')
+
+      const responses = shouldCreateTicket ? [
+        `Merci pour votre message. Je vois que vous rencontrez un problème. Je vais créer un ticket pour vous afin que notre équipe de support puisse vous aider.\n\n**Ticket créé avec succès !**\n\nNotre équipe prendra en charge votre demande dans les plus brefs délais. Vous pouvez suivre l'état de votre ticket dans la section "Tickets".`,
+        `Je comprends votre préoccupation. Je vais ouvrir un ticket de support pour vous.\n\n**Ticket en cours de création...**\n\nUn agent support sera assigné à votre dossier et vous contactera sous peu.`
+      ] : [
         `Merci pour votre message. J'ai bien noté votre demande concernant "${userMessage.slice(0, 50)}...". Laissez-moi analyser la situation.\n\nAprès vérification, je vous recommande de :\n\n1. Redémarrer l'appareil en maintenant le bouton power 10 secondes\n2. Vérifier la connexion réseau\n3. Mettre à jour le firmware si disponible\n\nSouhaitez-vous que j'ouvre un ticket pour un suivi personnalisé ?`,
         `Je comprends votre préoccupation. Voici ce que je peux faire pour vous aider :\n\n**Diagnostic rapide :**\n- Vérification de l'état du système\n- Analyse des derniers logs\n- Test de connectivité\n\nLe diagnostic préliminaire indique que tout fonctionne normalement de notre côté. Le problème pourrait être local.\n\nPouvez-vous me donner plus de détails sur les étapes que vous avez déjà tentées ?`,
         `Excellente question ! Concernant votre demande :\n\n**Réponse :**\nPour résoudre ce type de problème, nous avons constaté que la solution la plus efficace est de procéder à une réinitialisation complète des paramètres réseau, puis de reconfigurer la connexion.\n\n**Étapes recommandées :**\n1. Accédez aux paramètres système\n2. Sélectionnez "Réseau" > "Réinitialiser"\n3. Attendez la reconnexion automatique\n\nBesoin d'aide supplémentaire ? Je suis là pour vous accompagner.`
@@ -111,7 +143,16 @@ function ChatBot() {
         id: idCounter.current++,
         role: 'assistant',
         content: responses[Math.floor(Math.random() * responses.length)],
-        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        showCreateTicket: shouldCreateTicket
+      }
+
+      if (shouldCreateTicket) {
+        setPendingTicket({
+          title: `Support: ${userMessage.slice(0, 50)}...`,
+          description: userMessage,
+          category: 'Autre'
+        })
       }
 
       setMessages(prev => [...prev, newMessage])
@@ -145,6 +186,29 @@ function ChatBot() {
   const handleSuggestionClick = (suggestion) => {
     setInputValue(suggestion)
     inputRef.current?.focus()
+  }
+
+  const handleCreateTicket = () => {
+    if (!pendingTicket) return
+    
+    const ticket = createTicket({
+      title: pendingTicket.title,
+      description: pendingTicket.description,
+      category: pendingTicket.category,
+      priority: 'medium'
+    }, user)
+
+    const confirmMessage = {
+      id: idCounter.current++,
+      role: 'assistant',
+      content: `✅ **Ticket ${ticket.id} créé avec succès !**\n\nVous pouvez suivre l'état de votre ticket en cliquant sur le bouton ci-dessous.`,
+      timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      ticketCreated: true,
+      ticketId: ticket.id
+    }
+
+    setMessages(prev => [...prev, confirmMessage])
+    setPendingTicket(null)
   }
 
   const handleNewConversation = () => {
@@ -304,6 +368,8 @@ function ChatBot() {
                   key={msg.id}
                   message={msg}
                   isLast={i === messages.length - 1}
+                  onCreateTicket={handleCreateTicket}
+                  onNavigateToTicket={(id) => navigate(`/tickets/${id}`)}
                 />
               ))}
               {isTyping && <TypingIndicator />}

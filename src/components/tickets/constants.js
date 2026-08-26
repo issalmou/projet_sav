@@ -1,11 +1,12 @@
 export const STATUSES = {
   open: { label: 'Ouvert', color: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500', icon: 'circle', step: 0 },
   in_progress: { label: 'En cours', color: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500', icon: 'clock', step: 1 },
-  resolved: { label: 'Résolu', color: 'bg-teal-50 text-teal-700 border-teal-200', dot: 'bg-teal-500', icon: 'check', step: 2 },
-  closed: { label: 'Fermé', color: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400', icon: 'x', step: 3 }
+  escalated: { label: 'Escaladé', color: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', icon: 'alert', step: 2 },
+  resolved: { label: 'Résolu', color: 'bg-teal-50 text-teal-700 border-teal-200', dot: 'bg-teal-500', icon: 'check', step: 3 },
+  closed: { label: 'Fermé', color: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400', icon: 'x', step: 4 }
 }
 
-export const STATUS_ORDER = ['open', 'in_progress', 'resolved', 'closed']
+export const STATUS_ORDER = ['open', 'in_progress', 'escalated', 'resolved', 'closed']
 
 export const PRIORITIES = {
   high: { label: 'Haute', color: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', rank: 2 },

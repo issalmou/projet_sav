@@ -33,16 +33,17 @@ export function TicketsProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets))
   }, [tickets])
 
-  const createTicket = (data) => {
+  const createTicket = (data, user = null) => {
     const now = new Date().toISOString()
     const ticket = {
       id: newId(tickets),
       title: data.title,
       description: data.description,
       status: 'open',
-      priority: data.priority,
-      category: data.category,
+      priority: data.priority || 'medium',
+      category: data.category || 'Autre',
       assignee: data.assignee || 'Non assigné',
+      createdBy: user ? { email: user.email, name: user.name, role: user.role } : null,
       createdAt: now,
       updatedAt: now,
       attachments: [],
@@ -50,6 +51,14 @@ export function TicketsProvider({ children }) {
     }
     setTickets((prev) => [ticket, ...prev])
     return ticket
+  }
+
+  const getUserTickets = (user) => {
+    if (!user) return tickets
+    if (user.role === 'admin' || user.role === 'manager' || user.role === 'agent') {
+      return tickets
+    }
+    return tickets.filter((t) => t.createdBy?.email === user.email)
   }
 
   const updateTicket = (id, data) =>
@@ -83,7 +92,8 @@ export function TicketsProvider({ children }) {
         createTicket,
         updateTicket,
         deleteTicket,
-        addMessage
+        addMessage,
+        getUserTickets
       }}
     >
       {children}

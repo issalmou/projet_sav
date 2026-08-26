@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
 import { useNotifications } from '../../contexts/useNotifications'
+import { roleLabel } from '../../contexts/roles'
 
 const LEVEL_CONFIG = {
   success: { icon: CheckCircle2, badge: 'bg-emerald-50 text-emerald-600' },
@@ -187,7 +188,7 @@ function TopNavBar() {
             </div>
             <div className="hidden md:block text-left">
               <p className="text-sm font-semibold text-slate-900">{user?.name || 'Utilisateur'}</p>
-              <p className="text-xs text-slate-500">{user?.role || 'Rôle'}</p>
+              <p className="text-xs text-slate-500">{roleLabel(user?.role) || 'Rôle'}</p>
             </div>
             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>

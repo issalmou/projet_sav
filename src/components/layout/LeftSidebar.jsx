@@ -17,7 +17,7 @@ const menuItems = [
   { icon: MessageCircle, label: 'Chat AI', path: '/chat' },
   { icon: Ticket, label: 'Tickets', path: '/tickets' },
   { icon: Package, label: 'Produits', path: '/products' },
-  { icon: BarChart2, label: 'Analytiques', path: '/analytics' },
+  { icon: BarChart2, label: 'Analytiques', path: '/analytics', roles: ['admin', 'agent'] },
   { icon: Bell, label: 'Notifications', path: '/notifications' },
   { icon: Settings, label: 'Paramètres', path: '/settings' },
 ]

@@ -20,6 +20,7 @@ import {
   MessageSquare
 } from 'lucide-react'
 import { useTickets } from '../../contexts/useTickets'
+import { useAuth } from '../../contexts/useAuth'
 import StatusBadge from '../../components/tickets/StatusBadge'
 import PriorityBadge from '../../components/tickets/PriorityBadge'
 import CategoryBadge from '../../components/tickets/CategoryBadge'
@@ -56,13 +57,13 @@ function StatCard({ icon: Icon, label, value, color }) {
   )
 }
 
-function TicketRow({ ticket }) {
+function TicketRow({ ticket, basePath }) {
   const navigate = useNavigate()
   const messageCount = ticket.messages?.length ?? 0
 
   return (
     <div
-      onClick={() => navigate(`/tickets/${ticket.id}`)}
+      onClick={() => navigate(`${basePath}/${ticket.id}`)}
       className="group flex items-center gap-4 px-5 py-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
     >
       <span className="text-xs font-bold text-slate-400 w-20 shrink-0">#{ticket.id}</span>
@@ -128,9 +129,13 @@ function SortButton({ label, active, direction, onClick }) {
   )
 }
 
-function TicketsList() {
-  const { tickets } = useTickets()
+function TicketsList({ basePath = '/tickets' }) {
+  const { getUserTickets } = useTickets()
+  const { user } = useAuth()
   const navigate = useNavigate()
+
+  const userTickets = getUserTickets(user)
+  const isClient = user?.role === 'client'
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -169,7 +174,7 @@ function TicketsList() {
 
   const filteredTickets = useMemo(() => {
     const query = search.trim().toLowerCase()
-    const filtered = tickets.filter((ticket) => {
+    const filtered = userTickets.filter((ticket) => {
       const matchSearch =
         !query ||
         ticket.title.toLowerCase().includes(query) ||
@@ -192,7 +197,7 @@ function TicketsList() {
     const sorter = sorters[sortBy]
     const sorted = [...filtered].sort(sorter)
     return sortAsc ? sorted.reverse() : sorted
-  }, [tickets, search, statusFilter, priorityFilter, categoryFilter, sortBy, sortAsc])
+  }, [userTickets, search, statusFilter, priorityFilter, categoryFilter, sortBy, sortAsc])
 
   const pageCount = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -202,12 +207,12 @@ function TicketsList() {
   )
 
   const statusCounts = useMemo(() => {
-    const counts = { all: tickets.length }
+    const counts = { all: userTickets.length }
     STATUS_ORDER.forEach((s) => {
-      counts[s] = tickets.filter((t) => t.status === s).length
+      counts[s] = userTickets.filter((t) => t.status === s).length
     })
     return counts
-  }, [tickets])
+  }, [userTickets])
 
   const resetFilters = () => {
     setSearch('')
@@ -247,37 +252,45 @@ function TicketsList() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gestion des Tickets</h1>
-            <p className="text-slate-500">Suivez et gérez toutes les demandes de support.</p>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              {isClient ? 'Mes Tickets' : 'Gestion des Tickets'}
+            </h1>
+            <p className="text-slate-500">
+              {isClient 
+                ? 'Suivez vos demandes de support.' 
+                : 'Suivez et gérez toutes les demandes de support.'}
+            </p>
           </div>
+          {!isClient && (
           <button
-            onClick={() => navigate('/tickets/new')}
+            onClick={() => navigate(`${basePath}/new`)}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
           >
             <Plus className="w-5 h-5" />
             Nouveau Ticket
           </button>
+          )}
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard icon={Ticket} label="Total Tickets" value={tickets.length} color="bg-blue-50 text-blue-600" />
+          <StatCard icon={Ticket} label="Total Tickets" value={userTickets.length} color="bg-blue-50 text-blue-600" />
           <StatCard
             icon={AlertTriangle}
             label="En cours"
-            value={tickets.filter((t) => t.status === 'in_progress').length}
+            value={userTickets.filter((t) => t.status === 'in_progress').length}
             color="bg-amber-50 text-amber-600"
           />
           <StatCard
             icon={CheckCircle2}
             label="Résolus"
-            value={tickets.filter((t) => t.status === 'resolved').length}
+            value={userTickets.filter((t) => t.status === 'resolved').length}
             color="bg-teal-50 text-teal-600"
           />
           <StatCard
             icon={Clock}
             label="Ouverts"
-            value={tickets.filter((t) => t.status === 'open').length}
+            value={userTickets.filter((t) => t.status === 'open').length}
             color="bg-red-50 text-red-600"
           />
         </div>
@@ -474,13 +487,15 @@ function TicketsList() {
               </div>
               <h3 className="text-sm font-bold text-slate-900 mb-1">Aucun ticket trouvé</h3>
               <p className="text-xs text-slate-500 max-w-xs">
-                {tickets.length === 0
-                  ? "Vous n'avez pas encore de tickets. Créez-en un pour commencer."
+                {userTickets.length === 0
+                  ? isClient 
+                    ? "Vous n'avez pas encore de tickets. Utilisez le chat AI pour créer un ticket si vous rencontrez un problème."
+                    : "Aucun ticket n'existe encore."
                   : "Aucun ticket ne correspond à vos critères de recherche ou de filtres."}
               </p>
-              {tickets.length === 0 && (
+              {userTickets.length === 0 && !isClient && (
                 <button
-                  onClick={() => navigate('/tickets/new')}
+                  onClick={() => navigate(`${basePath}/new`)}
                   className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
                 >
                   Créer un ticket
@@ -488,7 +503,7 @@ function TicketsList() {
               )}
             </div>
           ) : (
-            visibleTickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} />)
+            visibleTickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} basePath={basePath} />)
           )}
         </div>
 

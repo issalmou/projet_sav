@@ -10,11 +10,15 @@ import {
   Zap,
   CreditCard
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import StatCard from '../components/dashboard/StatCard'
 import { useAuth } from '../contexts/useAuth'
 
 function Dashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const isClient = user?.role === 'client'
+
   return (
     <div className="flex-1 overflow-y-auto p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -26,10 +30,15 @@ function Dashboard() {
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Bonjour, {user?.name?.split(' ')[0] || 'Utilisateur'}</h1>
               <p className="text-slate-500">Ravi de vous revoir. Voici un aperçu de vos services 3LM Solutions.</p>
             </div>
-            <button className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]">
-              <Plus className="w-5 h-5" />
-              Nouveau Ticket
-            </button>
+            {!isClient && (
+              <button 
+                onClick={() => navigate('/tickets/new')}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <Plus className="w-5 h-5" />
+                Nouveau Ticket
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Cpu, MessageSquare, Sparkles, Loader2 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
-import { ROLES, ROLE_ORDER, homeFor } from '../../contexts/roles'
-import { loginRequest } from '../../api/auth'
+import { ROLES, ROLE_ORDER, homeFor, resolveRole } from '../../contexts/roles'
+import { getCurrentUserRequest, loginRequest } from '../../api/auth'
 
 function Login() {
   const { login } = useAuth()
@@ -33,6 +33,15 @@ function Login() {
         email: formData.email,
         password: formData.password,
       })
+
+      // Le backend renvoie uniquement les tokens : on charge le profil courant
+      // pour disposer du nom, de l'email et du rôle de l'utilisateur.
+      if (data.access_token) {
+        const profile = await getCurrentUserRequest(data.access_token).catch(() => null)
+        if (profile) {
+          data = { ...data, ...profile, name: profile.full_name || data.name || '' }
+        }
+      }
     } catch (err) {
       if (import.meta.env.DEV) {
         // Backend non démarré en local : simulation avec le rôle DEV ONLY choisi.
@@ -51,7 +60,7 @@ function Login() {
     }
 
     // Le rôle provient exclusivement de la réponse de l'API (jamais du client).
-    const role = data.role || data.user?.role
+    const role = resolveRole(data.role?.name || data.role || data.user?.role)
     const success = login({ ...data, role })
 
     setLoading(false)

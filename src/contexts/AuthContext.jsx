@@ -1,12 +1,24 @@
 import { createContext, useState, useEffect } from 'react'
+import { resolveRole } from './roles'
 
 const AuthContext = createContext(null)
 
+function loadStoredUser() {
+  const stored = localStorage.getItem('auth_user')
+  if (!stored) return null
+  try {
+    const user = JSON.parse(stored)
+    if (user && typeof user.role === 'string') {
+      user.role = resolveRole(user.role)
+    }
+    return user
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem('auth_user')
-    return stored ? JSON.parse(stored) : null
-  })
+  const [user, setUser] = useState(loadStoredUser)
 
   useEffect(() => {
     if (user) {

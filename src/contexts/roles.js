@@ -23,8 +23,32 @@ export const ROLES = {
 
 export const ROLE_ORDER = ['admin', 'manager', 'agent', 'client']
 
+// Correspondance entre les noms de rôles du backend (français) et les clés
+// utilisées côté frontend.
+export const BACKEND_ROLE_TO_KEY = {
+  administrateur: 'admin',
+  responsable_sav: 'manager',
+  technicien: 'agent',
+  client: 'client',
+}
+
+// Ramène un rôle (nom backend, clé frontend ou objet) vers une clé frontend.
+export function resolveRole(role) {
+  if (!role) return undefined
+  const name = typeof role === 'object' ? role?.name : role
+  if (!name) return undefined
+  const key = String(name).toLowerCase()
+  return BACKEND_ROLE_TO_KEY[key] || key
+}
+
+// Libellé lisible d'un rôle pour l'affichage.
+export function roleLabel(role) {
+  return ROLES[role]?.label || role
+}
+
 export const PERMISSIONS = {
-  'admin.view': ['admin', 'manager', 'agent'],
+  'admin.view': ['admin', 'agent'],
+  'analytics.view': ['admin', 'manager', 'agent'],
   'users.manage': ['admin', 'manager'],
   'documents.manage': ['admin', 'manager', 'agent'],
   'integrations.manage': ['admin'],
@@ -34,8 +58,8 @@ export const PERMISSIONS = {
 
 export const ROLE_HOME = {
   admin: '/admin',
-  manager: '/admin',
-  agent: '/dashboard',
+  manager: '/responsable-sav',
+  agent: '/agent',
   client: '/dashboard',
 }
 

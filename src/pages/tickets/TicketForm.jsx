@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import StatusSelect from '../../components/tickets/StatusSelect'
 import { CATEGORIES, PRIORITIES } from '../../components/tickets/constants'
+import ProductSelector, { ProductSelectorTrigger } from '../../components/products/ProductSelector'
 
 function PrioritySelect({ value, onChange }) {
   return (
@@ -49,9 +50,11 @@ export default function TicketForm({ mode, initialValues, onSubmit, submitLabel 
     category: initialValues?.category || '',
     priority: initialValues?.priority || 'medium',
     status: initialValues?.status || 'open',
-    assignee: initialValues?.assignee || ''
+    assignee: initialValues?.assignee || '',
+    product: initialValues?.product || null
   })
   const [errors, setErrors] = useState({})
+  const [productSelectorOpen, setProductSelectorOpen] = useState(false)
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -78,7 +81,8 @@ export default function TicketForm({ mode, initialValues, onSubmit, submitLabel 
       category: formData.category,
       priority: formData.priority,
       status: formData.status,
-      assignee: formData.assignee.trim()
+      assignee: formData.assignee.trim(),
+      product: formData.product || null
     })
   }
 
@@ -153,6 +157,23 @@ export default function TicketForm({ mode, initialValues, onSubmit, submitLabel 
 
             <Field label="Priorité">
               <PrioritySelect value={formData.priority} onChange={(v) => handleChange('priority', v)} />
+            </Field>
+
+            <Field label="Produit associé">
+              <div className="relative">
+                <ProductSelectorTrigger
+                  product={formData.product}
+                  onClick={() => setProductSelectorOpen(true)}
+                  onRemove={formData.product ? () => handleChange('product', null) : null}
+                />
+                <ProductSelector
+                  open={productSelectorOpen}
+                  onClose={() => setProductSelectorOpen(false)}
+                  onSelect={(product) => handleChange('product', product)}
+                  selectedId={formData.product?.id}
+                  mode="modal"
+                />
+              </div>
             </Field>
 
             {mode === 'edit' && (
