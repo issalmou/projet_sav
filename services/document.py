@@ -46,6 +46,17 @@ class DocumentPermissionError(Exception):
     """
 
 
+class DocumentIndexingError(Exception):
+    """L'indexation RAG a échoué après la création du document : l'upload entier est annulé.
+
+    Décision métier validée : l'indexation est obligatoire pour qu'un upload
+    soit considéré comme réussi. Le message d'origine (DocumentLoadError,
+    EmbeddingError, ou toute exception inattendue) est chaîné via `__cause__`
+    pour les logs, mais jamais exposé au client — la route ne doit renvoyer
+    qu'un message générique (500).
+    """
+
+
 class DocumentService:
     """Orchestrateur métier pour les documents."""
 
@@ -75,7 +86,18 @@ class DocumentService:
     async def upload_document(
         self, *, file: UploadFile, metadata: DocumentUploadMetadata, created_by: User
     ) -> Document:
-        """Valide le format, sauvegarde le fichier et enregistre le document."""
+        """Valide le format, sauvegarde le fichier, enregistre le document ET l'indexe pour le RAG.
+
+        L'indexation est obligatoire pour qu'un upload soit considéré comme
+        réussi (décision métier validée) : aucun fallback ici, contrairement à
+        la synthèse de ticket. Si `index_document` échoue pour quelque raison
+        que ce soit, TOUT est annulé — rollback PostgreSQL (le document
+        n'existe jamais côté base, `flush()` remplace le `commit()` précédent
+        pour permettre ce rollback classique), nettoyage best-effort d'éventuels
+        chunks déjà écrits dans le VectorStore, et suppression du fichier
+        physique déjà présent sur disque. Aucun artefact partiel ne doit
+        survivre à un échec (ni ligne PostgreSQL, ni fichier orphelin).
+        """
 
         file_type = _resolve_file_type(file.filename)
 
@@ -101,9 +123,58 @@ class DocumentService:
             products=products,
         )
         self.session.add(document)
-        await self.session.commit()
+        # flush (pas commit) : alloue document.id et écrit les lignes document_products dans la
+        # transaction en cours, sans la valider — index_document() en a besoin (product_ids,
+        # upsert VectorStore), mais un rollback classique reste possible tant que rien n'est commit.
+        await self.session.flush()
+        document_id = document.id  # capturé avant un éventuel rollback (qui expire l'objet)
+
+        try:
+            await self.index_document(document)
+        except (DocumentLoadError, EmbeddingError) as exc:
+            logger.warning(
+                "Document upload aborted: indexing failed (%s), rolling back and cleaning up",
+                type(exc).__name__,
+                exc_info=True,
+            )
+            await self._rollback_failed_upload(document_id, stored_path)
+            raise DocumentIndexingError("Document indexing failed") from exc
+        except Exception as exc:
+            logger.error(
+                "Document upload aborted: indexing failed UNEXPECTEDLY, rolling back and cleaning up",
+                exc_info=True,
+            )
+            await self._rollback_failed_upload(document_id, stored_path)
+            raise DocumentIndexingError("Document indexing failed unexpectedly") from exc
+
         await self.session.refresh(document, attribute_names=["products", "created_by"])
         return document
+
+    async def _rollback_failed_upload(self, document_id: UUID, stored_path: Path) -> None:
+        """Annule un upload dont l'indexation a échoué.
+
+        Rollback PostgreSQL (document + associations document_products jamais
+        commit, donc réellement absents après coup) ; nettoyage best-effort du
+        VectorStore (au cas où des chunks auraient été partiellement écrits
+        avant l'échec) ; suppression du fichier physique déjà écrit sur disque.
+        Ne lève jamais elle-même : un échec de nettoyage ne doit pas masquer
+        l'erreur d'indexation d'origine.
+        """
+
+        await self.session.rollback()
+
+        try:
+            await asyncio.to_thread(self._get_vector_store().delete_document_chunks, document_id)
+        except Exception:
+            logger.error(
+                "Cleanup: failed to remove partial VectorStore chunks for document %s", document_id, exc_info=True
+            )
+
+        try:
+            if stored_path.exists():
+                await asyncio.to_thread(stored_path.unlink)
+        except Exception:
+            logger.error("Cleanup: failed to remove orphaned file %s", stored_path, exc_info=True)
 
     async def index_document(self, document: Document) -> list[Chunk] | None:
         """Indexe `document` pour le RAG (extraction, chunking, embeddings, stockage vectoriel)."""
@@ -225,6 +296,7 @@ async def _write_file(path: Path, content: bytes) -> None:
 
 
 __all__ = [
+    "DocumentIndexingError",
     "DocumentPermissionError",
     "DocumentService",
     "FileTooLargeError",

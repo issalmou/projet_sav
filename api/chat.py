@@ -15,6 +15,7 @@ from app.core.dependencies import get_current_user, get_db_session
 from app.models.user import User
 from app.schemas.chat import ChatMessageRequest, ChatMessageResponse, ConversationDetail, ConversationPublic
 from app.services.chat_service import ChatService
+from app.services.diagnostic_service import DiagnosticService
 
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -23,12 +24,27 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def get_chat_service(db: Annotated[AsyncSession, Depends(get_db_session)]) -> ChatService:
     """Fournit un ChatService lié à la session de la requête.
 
-    Dépendance dédiée (plutôt qu'une instanciation directe dans chaque route)
-    pour permettre aux tests d'injecter un ChatService branché sur un
-    fournisseur LLM factice via `app.dependency_overrides`.
+    Utilisé par les routes de gestion des conversations (lecture/suppression),
+    qui n'ont pas besoin de la logique de diagnostic. Dépendance dédiée
+    (plutôt qu'une instanciation directe) pour permettre aux tests d'injecter
+    un ChatService branché sur un fournisseur LLM factice via
+    `app.dependency_overrides`.
     """
 
     return ChatService(db)
+
+
+async def get_diagnostic_service(db: Annotated[AsyncSession, Depends(get_db_session)]) -> DiagnosticService:
+    """Fournit un DiagnosticService lié à la session de la requête.
+
+    Utilisé par `POST /chat/message` : chaque message client passe par le
+    diagnostic (statut RESOLU/EN_COURS/A_ESCALADER, proposition puis
+    confirmation avant création de ticket), sur le même principe que
+    `get_chat_service` — dépendance dédiée pour permettre aux tests
+    d'injecter un DiagnosticService branché sur un fournisseur LLM factice.
+    """
+
+    return DiagnosticService(db)
 
 
 @router.post(
@@ -46,12 +62,18 @@ async def get_chat_service(db: Annotated[AsyncSession, Depends(get_db_session)])
 async def send_message(
     payload: ChatMessageRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+    diagnostic_service: Annotated[DiagnosticService, Depends(get_diagnostic_service)],
 ) -> ChatMessageResponse:
-    """Envoie un message à l'agent IA (crée une conversation si `conversation_id` est absent)."""
+    """Envoie un message à l'agent IA (crée une conversation si `conversation_id` est absent).
+
+    Le message passe par le diagnostic automatique (statut RESOLU/EN_COURS/
+    A_ESCALADER). Sur escalade, aucun ticket n'est créé immédiatement : le
+    client est informé et invité à confirmer ; le ticket n'est réellement créé
+    via TicketService qu'après une confirmation explicite sur un tour suivant.
+    """
 
     try:
-        conversation, assistant_message = await chat_service.send_message(
+        result = await diagnostic_service.diagnose(
             current_user, payload.content, conversation_id=payload.conversation_id
         )
     except ValueError as exc:
@@ -59,7 +81,11 @@ async def send_message(
     except LLMError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
 
-    return ChatMessageResponse(conversation_id=conversation.id, message=assistant_message)
+    return ChatMessageResponse(
+        conversation_id=result.conversation.id,
+        message=result.message,
+        ticket_id=result.ticket.id if result.ticket is not None else None,
+    )
 
 
 @router.get(

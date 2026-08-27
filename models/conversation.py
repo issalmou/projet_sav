@@ -7,7 +7,7 @@ conversationnelle").
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,11 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # Vrai si DiagnosticService a proposé un ticket (statut A_ESCALADER) et attend
+    # encore une confirmation explicite du client (oui/non) avant de le créer via
+    # TicketService. Remis à faux dès que la confirmation est tranchée (oui ou non).
+    pending_ticket_confirmation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",

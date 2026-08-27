@@ -51,10 +51,17 @@ class ChatMessageRequest(BaseModel):
 
 
 class ChatMessageResponse(BaseModel):
-    """Réponse de l'agent IA à un message utilisateur."""
+    """Réponse de l'agent IA à un message utilisateur.
+
+    `ticket_id` n'est renseigné que si ce tour a réellement créé un ticket
+    (confirmation explicite du client, cf. DiagnosticService) — jamais
+    simplement parce que le texte de la réponse en parle. `None` dans tous
+    les autres cas (résolu, en cours, proposition en attente, refus).
+    """
 
     conversation_id: UUID
     message: MessagePublic
+    ticket_id: UUID | None = None
 
 
 __all__ = [

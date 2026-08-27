@@ -78,11 +78,80 @@ DIAGNOSTIC_STATUS_INSTRUCTION = (
     "à laquelle tu as répondu complètement.\n"
     "- [STATUT: EN_COURS] si tu as besoin d'une information supplémentaire ou d'une vérification de la "
     "part du client avant de conclure.\n"
-    "- [STATUT: A_ESCALADER] si, après vérification, tu ne parviens pas à résoudre le problème et qu'il "
-    "faut créer un ticket de support et transférer le client à un technicien.\n\n"
+    "- [STATUT: A_ESCALADER] si, après vérification, tu ne parviens pas à résoudre le problème. Dans ce "
+    "cas, explique clairement au client que le problème n'a pas pu être résolu par cet échange, puis "
+    "demande-lui explicitement s'il souhaite qu'un ticket de support soit créé pour qu'un technicien "
+    "prenne le relais. Ne crée et n'annonce jamais le ticket comme déjà créé à ce stade : tu proposes "
+    "seulement, la création réelle attend sa réponse.\n\n"
     "Ne mentionne et n'explique jamais ce marqueur au client dans le texte de ta réponse : "
     "il doit apparaître seul, sur la toute dernière ligne."
 )
+
+# Marqueurs machine-lisibles attendus en fin de réponse lorsqu'un ticket a été
+# proposé (statut A_ESCALADER) et que la conversation attend la confirmation
+# explicite du client (cf. Conversation.pending_ticket_confirmation). Doivent
+# rester synchronisés avec `DiagnosticService._CONFIRMATION_MARKER_PATTERN` /
+# `app.utils.constants.TicketConfirmation`.
+TICKET_CONFIRMATION_MARKERS = {
+    "OUI": "confirmed",
+    "NON": "declined",
+    "INCERTAIN": "unclear",
+}
+
+TICKET_CONFIRMATION_INSTRUCTION = (
+    "\n\nTu as proposé, dans un message précédent, la création d'un ticket de support car le "
+    "problème du client n'était pas résolu. Le dernier message du client est sa réponse à cette "
+    "proposition précise. Détermine s'il confirme clairement vouloir un ticket, s'il refuse "
+    "clairement, ou si sa réponse ne permet pas de conclure avec certitude (auquel cas continue à "
+    "l'aider normalement et redemande une confirmation claire). Après ta réponse, ajoute une toute "
+    "dernière ligne, seule, contenant exactement l'un de ces marqueurs :\n"
+    "- [CONFIRMATION: OUI] si le client confirme clairement vouloir la création du ticket.\n"
+    "- [CONFIRMATION: NON] si le client refuse clairement la création du ticket.\n"
+    "- [CONFIRMATION: INCERTAIN] si sa réponse ne permet pas de conclure clairement.\n\n"
+    "Règle impérative de cohérence : n'annonce JAMAIS dans le texte de ta réponse que le ticket "
+    "a été créé, sauf si tu ajoutes bien [CONFIRMATION: OUI] à la toute fin. Si tu n'es pas "
+    "certain de la confirmation du client (cas INCERTAIN), ne dis surtout pas que son ticket est "
+    "créé ou en cours de création : demande-lui explicitement de répondre clairement par oui ou "
+    "par non, sans rien affirmer sur un ticket qui ne serait pas encore confirmé.\n\n"
+    "Ne mentionne et n'explique jamais ce marqueur au client : il doit apparaître seul, sur la "
+    "toute dernière ligne."
+)
+
+
+def build_ticket_synthesis_instruction(language: str = _DEFAULT_LANGUAGE) -> str:
+    """Prompt système pour synthétiser la description technique d'un ticket de support.
+
+    `language` est délibérément indépendant de `user.preferred_language` (décision
+    validée) : ce texte est destiné au staff technique, pas au client, et doit
+    rester dans une langue déterminée pour l'équipe SAV (typiquement
+    `settings.DEFAULT_LANGUAGE`) plutôt que de suivre la langue dans laquelle le
+    client s'est exprimé.
+    """
+
+    language_name = _LANGUAGE_NAMES.get(language, _LANGUAGE_NAMES[_DEFAULT_LANGUAGE])
+    return (
+        "\n\nTu vas maintenant rédiger la description technique d'un ticket de support, à partir de "
+        "l'échange de diagnostic ci-dessus et du contexte documentaire éventuellement fourni. Ce texte "
+        "est destiné à un technicien, jamais au client.\n\n"
+        f"Rédige cette description en {language_name}, quelle que soit la langue utilisée par le client "
+        "dans la conversation.\n\n"
+        "Rédige une description synthétique et factuelle du problème, incluant :\n"
+        "- les symptômes rapportés par le client ;\n"
+        "- les vérifications déjà effectuées et leurs résultats ;\n"
+        "- pourquoi le problème reste non résolu à ce stade.\n\n"
+        "Reste concis : environ 600 caractères maximum (quelques phrases), pas un compte-rendu "
+        "exhaustif.\n\n"
+        "N'inclus jamais un message de confirmation du client (« oui », « d'accord », etc.) comme élément "
+        "de description : ce n'est pas un symptôme.\n\n"
+        "Ensuite, si le contexte documentaire ci-dessus permet d'identifier avec certitude le produit "
+        "concerné (référence, nom ou modèle précis explicitement mentionné), ajoute une toute dernière "
+        "ligne, seule, au format :\n"
+        "[PRODUIT: <référence ou nom exact du produit>]\n\n"
+        "Si aucun produit ne peut être identifié avec certitude à partir du contexte, écris exactement :\n"
+        "[PRODUIT: AUCUN]\n\n"
+        "N'invente jamais un produit qui ne serait pas explicitement mentionné dans le contexte "
+        "documentaire ou la conversation."
+    )
 
 
 def build_context_section(chunks: list[RetrievedChunk]) -> str:
@@ -109,7 +178,10 @@ __all__ = [
     "DIAGNOSTIC_STATUS_MARKERS",
     "LOW_CONFIDENCE_INSTRUCTION",
     "SYSTEM_PROMPT_SAV",
+    "TICKET_CONFIRMATION_INSTRUCTION",
+    "TICKET_CONFIRMATION_MARKERS",
     "build_context_section",
     "build_system_prompt",
+    "build_ticket_synthesis_instruction",
     "build_title_prompt",
 ]

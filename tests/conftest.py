@@ -154,3 +154,19 @@ class NullRetriever:
 
     async def retrieve(self, question: str, *, product_id=None) -> list:
         return []
+
+
+class StubRetriever:
+    """Double de RetrieverService qui retourne toujours les mêmes chunks fournis.
+
+    Utilisé pour tester la vérification croisée produit/contexte RAG
+    (DiagnosticService._resolve_product_id) sans dépendre d'un vrai VectorStore :
+    les chunks passés au constructeur doivent mentionner le produit attendu
+    dans leur texte/titre pour que la corroboration réussisse.
+    """
+
+    def __init__(self, chunks: list) -> None:
+        self._chunks = chunks
+
+    async def retrieve(self, question: str, *, product_id=None) -> list:
+        return self._chunks
