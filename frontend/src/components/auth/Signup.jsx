@@ -93,22 +93,8 @@ function Signup() {
             Empower your team with autonomous AI support
           </h2>
           <p className="text-blue-100 text-lg">
-            3LM Solutions resolves 70% of common queries instantly, letting your agents focus on what matters most.
+            Centralisez vos demandes de support et connectez vos équipes à vos données métier.
           </p>
-
-          <div className="mt-16 text-left inline-flex items-center gap-4 bg-black/10 p-4 rounded-xl border border-white/5">
-            <div className="w-12 h-12 rounded-full bg-slate-300 overflow-hidden">
-              <img 
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" 
-                alt="Sarah Avatar" 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div>
-              <p className="text-white text-sm font-medium">"Halved our response times in weeks."</p>
-              <p className="text-blue-300 text-xs">Sarah Chen, VP of Support @ GlobalTech</p>
-            </div>
-          </div>
         </div>
       </div>
 

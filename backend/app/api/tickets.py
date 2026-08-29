@@ -1,40 +1,37 @@
-"""Routes de gestion des tickets SAV.
-
-Le module expose uniquement des endpoints préparatoires.
-La logique métier tickets sera ajoutée dans une phase ultérieure.
-"""
-from fastapi import APIRouter, status
-
+"""Authenticated ticket endpoints."""
+from typing import Annotated
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.dependencies import get_current_user, get_db_session
+from app.core.permissions import STAFF_ROLES, get_role_name
+from app.models.user import User
+from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
+from app.services.ticket_service import TicketService
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
+def is_staff(user): return user.is_superuser or get_role_name(user) in STAFF_ROLES
 
+@router.get("/", response_model=list[TicketRead])
+async def list_tickets(current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db_session)], limit=50, offset=0, status=None, priority=None):
+    return await TicketService(db).list_tickets(user_id=current_user.id, staff=is_staff(current_user), limit=min(limit, 100), offset=offset, status=status, priority=priority)
 
-@router.get("/status", status_code=status.HTTP_200_OK)
-async def tickets_status() -> dict[str, str]:
-	"""Retourne un état simple pour valider que le module est branché."""
+@router.get("/{ticket_id}", response_model=TicketRead)
+async def get_ticket(ticket_id: UUID, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db_session)]):
+    ticket = await TicketService(db).get_ticket(ticket_id, current_user.id, is_staff(current_user))
+    if not ticket: raise HTTPException(404, "Ticket not found")
+    return ticket
 
-	return {"message": "Ticket routes are ready"}
+@router.post("/", response_model=TicketRead, status_code=201)
+async def create_ticket(payload: TicketCreate, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db_session)]):
+    return await TicketService(db).create_ticket(payload, current_user.id)
 
+@router.patch("/{ticket_id}", response_model=TicketRead)
+async def update_ticket(ticket_id: UUID, payload: TicketUpdate, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db_session)]):
+    ticket = await TicketService(db).update_ticket(ticket_id, payload, current_user.id, is_staff(current_user))
+    if not ticket: raise HTTPException(404, "Ticket not found")
+    return ticket
 
-@router.get("/", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def list_tickets_placeholder() -> dict[str, str]:
-	"""Point d'entrée préparé pour lister les tickets."""
-
-	return {"detail": "Ticket listing will be implemented in a later phase"}
-
-
-@router.post("/", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def create_ticket_placeholder() -> dict[str, str]:
-	"""Point d'entrée préparé pour créer un ticket SAV."""
-
-	return {"detail": "Ticket creation will be implemented in a later phase"}
-
-
-@router.patch("/{ticket_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def update_ticket_placeholder(ticket_id: str) -> dict[str, str]:
-	"""Point d'entrée préparé pour mettre à jour un ticket."""
-
-	return {"detail": f"Ticket {ticket_id} update will be implemented in a later phase"}
-
-
-__all__ = ["router"]
+@router.delete("/{ticket_id}", status_code=204)
+async def delete_ticket(ticket_id: UUID, current_user: Annotated[User, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db_session)]):
+    if not await TicketService(db).delete_ticket(ticket_id, current_user.id, is_staff(current_user)): raise HTTPException(404, "Ticket not found")

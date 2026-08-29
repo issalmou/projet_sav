@@ -10,5 +10,6 @@ from app.models.message import Message
 from app.models.product import Product
 from app.models.role import Role
 from app.models.user import User
+from app.models.ticket import Ticket
 
-__all__ = ["Conversation", "Message", "Product", "Role", "User"]
+__all__ = ["Conversation", "Message", "Product", "Role", "User", "Ticket"]

@@ -15,8 +15,9 @@ export function TicketsProvider({ children }) {
     catch (err) { setError(err.message); setTickets([]) }
   }, [token])
   useEffect(() => { reload() }, [reload])
-  const createTicket = async (data) => { const result = await apiRequest('/tickets/', { token, method: 'POST', body: JSON.stringify(data) }); await reload(); return adapt(result) }
-  const updateTicket = async (id, data) => { const result = await apiRequest(`/tickets/${id}`, { token, method: 'PATCH', body: JSON.stringify(data) }); await reload(); return adapt(result) }
+  const payload = (data) => ({ ...data, product_id: data.product_id || data.product?.id || null, assignee_id: data.assignee_id || null, product: undefined, assignee: undefined, status: undefined })
+  const createTicket = async (data) => { const result = await apiRequest('/tickets/', { token, method: 'POST', body: JSON.stringify(payload(data)) }); await reload(); return adapt(result) }
+  const updateTicket = async (id, data) => { const result = await apiRequest(`/tickets/${id}`, { token, method: 'PATCH', body: JSON.stringify(payload(data)) }); await reload(); return adapt(result) }
   const deleteTicket = async (id) => { await apiRequest(`/tickets/${id}`, { token, method: 'DELETE' }); await reload() }
   const addMessage = async (id, message) => { const result = await apiRequest(`/tickets/${id}/messages`, { token, method: 'POST', body: JSON.stringify(message) }); await reload(); return result }
   const getUserTickets = (currentUser) => currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.role === 'agent' ? tickets : tickets.filter((t) => t.createdBy?.email === currentUser?.email)
