@@ -1,0 +1,154 @@
+"""Routes de gestion des utilisateurs.
+
+Règles d'accès (voir core/permissions.py) :
+- Un utilisateur consulte/modifie son propre profil librement, sauf son
+  rôle et son statut de compte (role_id, is_active, is_superuser).
+- Le staff (administrateur, responsable SAV) gère les autres comptes dans
+  la limite de son périmètre : un responsable SAV ne gère que les clients
+  et les techniciens ; un administrateur gère tout sauf les autres
+  administrateurs, sauf s'il est super admin (is_superuser=True).
+"""
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.dependencies import get_current_user, get_db_session
+from app.core.permissions import STAFF_ROLES, can_manage_role, get_role_name, require_roles
+from app.models.user import User
+from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.services.role_service import RoleService
+from app.services.user_service import UserService
+from app.utils.constants import RoleName
+
+
+router = APIRouter(prefix="/users", tags=["Users"])
+
+SELF_SERVICE_FORBIDDEN_FIELDS = {"role_id", "is_active", "is_superuser"}
+
+
+@router.get("/status", status_code=status.HTTP_200_OK)
+async def users_status() -> dict[str, str]:
+    """Retourne un état simple pour valider que le module est branché."""
+
+    return {"message": "User routes are ready"}
+
+
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    payload: UserCreate,
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Crée un utilisateur. Le rôle demandé doit être dans le périmètre de l'appelant."""
+
+    target_role_name = None
+    if payload.role_id is not None:
+        target_role = await RoleService(db).get_role_by_id(payload.role_id)
+        target_role_name = target_role.name if target_role else None
+
+    if not can_manage_role(current_user, target_role_name):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not allowed to create a user with this role",
+        )
+
+    try:
+        return await UserService(db).create_user(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@router.get("/", response_model=list[UserRead], status_code=status.HTTP_200_OK)
+async def list_users(
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    limit: int = 50,
+    offset: int = 0,
+) -> list[User]:
+    """Liste les utilisateurs. Un responsable SAV ne voit que les clients et techniciens."""
+
+    role_names = None
+    if not current_user.is_superuser and get_role_name(current_user) == RoleName.RESPONSABLE_SAV.value:
+        role_names = [RoleName.CLIENT.value, RoleName.TECHNICIEN.value]
+
+    return await UserService(db).list_users(limit=limit, offset=offset, role_names=role_names)
+
+
+@router.get("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
+async def get_user(
+    user_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Consulte un utilisateur : soi-même, ou un utilisateur dans le périmètre du staff appelant."""
+
+    target = await UserService(db).get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if current_user.id != target.id and not can_manage_role(current_user, get_role_name(target)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot access this user")
+
+    return target
+
+
+@router.put("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
+async def update_user(
+    user_id: UUID,
+    payload: UserUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Met à jour un utilisateur : soi-même (hors rôle/statut), ou le staff dans son périmètre."""
+
+    target = await UserService(db).get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    is_self = current_user.id == target.id
+    provided_fields = set(payload.model_dump(exclude_unset=True).keys())
+
+    if is_self:
+        if provided_fields & SELF_SERVICE_FORBIDDEN_FIELDS:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot change your own role or account status",
+            )
+    else:
+        if not can_manage_role(current_user, get_role_name(target)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot manage this user")
+
+        if payload.role_id is not None:
+            new_role = await RoleService(db).get_role_by_id(payload.role_id)
+            new_role_name = new_role.name if new_role else None
+            if not can_manage_role(current_user, new_role_name):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not allowed to assign this role",
+                )
+
+    try:
+        updated = await UserService(db).update_user(user_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return updated
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: UUID,
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> None:
+    target = await UserService(db).get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not can_manage_role(current_user, get_role_name(target)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot manage this user")
+    await UserService(db).delete_user(user_id)
+
+
+__all__ = ["router"]

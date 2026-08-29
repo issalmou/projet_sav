@@ -1,16 +1,30 @@
-# React + Vite
+# AI SAV Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The project is split into two independently runnable applications:
 
-Currently, two official plugins are available:
+- `frontend/`: React + Vite client application
+- `backend/`: FastAPI API, database models, migrations, and tests
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Frontend
 
-## React Compiler
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Backend
 
-## Expanding the ESLint configuration
+Run the backend commands from `backend/` so the `app` package is on the Python path:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cd backend
+python -m pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Run backend tests with `pytest` from the `backend/` directory. Database migrations are managed with the `alembic.ini` configuration in that directory.
+
+## Docker
+
+The root `docker-compose.yml` starts PostgreSQL and builds the backend from `backend/Dockerfile`.
