@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 jours
     ALLOWED_ORIGINS: str = "http://localhost:3000"
+    # Autorise toutes les origines (reflète l'Origin de la requête, credentials
+    # inclus). Pratique en développement ; forcé à False en production quelle que
+    # soit la valeur du .env.
+    CORS_ALLOW_ALL: bool = True
 
     # --- Base de données ---
     DATABASE_URL: str = Field(..., description="DSN PostgreSQL au format postgresql+asyncpg://...")
@@ -128,6 +132,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def cors_allow_all(self) -> bool:
+        """Vrai si toutes les origines sont autorisées (jamais en production)."""
+        return self.CORS_ALLOW_ALL and not self.is_production
 
     @property
     def supported_languages(self) -> list[str]:

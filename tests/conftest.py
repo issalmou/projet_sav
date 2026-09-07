@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 from app.database.session import AsyncSessionLocal
 from app.main import app
 from app.models.product import Product
+from app.models.role import Role
 from app.schemas.user import UserCreate
 from app.services.role_service import RoleService
 from app.services.user_service import UserService
@@ -126,6 +127,32 @@ async def sav_user(db_session):
     if still_there is not None:
         await db_session.delete(still_there)
         await db_session.commit()
+
+
+@pytest_asyncio.fixture
+async def extra_role(db_session):
+    """Rôle additionnel créé directement en base (hors service, dont `RoleCreate.name` est contraint à `RoleName`).
+
+    Sert aux tests de list/update/delete qui ne doivent jamais toucher aux 4
+    rôles officiels du CDC, réutilisés par le reste de la suite via `role_ids`.
+    """
+
+    role = Role(name=f"test_role_{uuid.uuid4().hex[:8]}", description="Rôle de test")
+    db_session.add(role)
+    await db_session.commit()
+    await db_session.refresh(role)
+
+    yield role
+
+    # Session fraîche (pas `db_session`) : un test a pu supprimer ce rôle via
+    # l'API, donc via une tout autre session déjà commit/close. `db_session`
+    # aurait gardé `role` dans sa map d'identité (il y a été ajouté plus haut)
+    # et l'aurait renvoyé tel quel sans revérifier la base.
+    async with AsyncSessionLocal() as cleanup_session:
+        still_there = await cleanup_session.get(Role, role.id)
+        if still_there is not None:
+            await cleanup_session.delete(still_there)
+            await cleanup_session.commit()
 
 
 @pytest_asyncio.fixture

@@ -6,9 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
-from app.api.dashboard import router as dashboard_router
 from app.api.documents import router as documents_router
 from app.api.products import router as products_router
+from app.api.roles import router as roles_router
 from app.api.tickets import router as tickets_router
 from app.api.users import router as users_router
 from app.api.warranties import router as warranties_router
@@ -42,7 +42,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    # En dev (CORS_ALLOW_ALL), on reflète n'importe quelle origine via un regex
+    # plutôt que allow_origins=["*"], afin de rester compatible avec
+    # allow_credentials=True. En production, seule la liste blanche s'applique.
+    allow_origins=[] if settings.cors_allow_all else settings.cors_origins,
+    allow_origin_regex=".*" if settings.cors_allow_all else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,9 +54,9 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat_router, prefix=settings.API_V1_PREFIX)
-app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX)
 app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
 app.include_router(products_router, prefix=settings.API_V1_PREFIX)
+app.include_router(roles_router, prefix=settings.API_V1_PREFIX)
 app.include_router(tickets_router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router, prefix=settings.API_V1_PREFIX)
 app.include_router(warranties_router, prefix=settings.API_V1_PREFIX)

@@ -37,3 +37,5 @@ prompting
 knowledge_base/*
 
 demo/*
+documentation_*
+schema_base_de_donnees.latex

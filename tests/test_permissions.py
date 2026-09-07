@@ -1,7 +1,7 @@
 """Tests de core/permissions.py : logique RBAC pure (tâche 5, 9), sans base de données."""
 from types import SimpleNamespace
 
-from app.core.permissions import can_manage_role
+from app.core.permissions import can_manage_role, can_manage_superuser_flag
 
 
 def _actor(is_superuser: bool = False, role_name: str | None = None):
@@ -44,3 +44,11 @@ def test_client_and_technicien_cannot_manage_anyone():
 
     assert not can_manage_role(client, "client")
     assert not can_manage_role(technicien, "technicien")
+
+
+def test_only_superuser_can_manage_the_superuser_flag():
+    assert can_manage_superuser_flag(_actor(is_superuser=True))
+    assert not can_manage_superuser_flag(_actor(role_name="administrateur"))
+    assert not can_manage_superuser_flag(_actor(role_name="responsable_sav"))
+    assert not can_manage_superuser_flag(_actor(role_name="client"))
+    assert not can_manage_superuser_flag(_actor())

@@ -6,7 +6,7 @@ Backend FastAPI de la plateforme IA SAV & Support Technique : authentification J
 
 ## Architecture
 
-- `api/` — routes FastAPI (`auth`, `users`, `chat`, `documents`, `products`, `tickets`, `warranties`, `dashboard`)
+- `api/` — routes FastAPI (`auth`, `users`, `chat`, `documents`, `products`, `tickets`, `warranties`)
 - `core/` — configuration (`config.py`), sécurité JWT/bcrypt (`security.py`), RBAC (`permissions.py`), dépendances FastAPI partagées (`dependencies.py`), journalisation (`logger.py`)
 - `models/` — modèles SQLAlchemy 2 (`User`, `Role`, `Product`, `Ticket`, `Conversation`, `Message`, `Document`)
 - `schemas/` — schémas Pydantic (entrée/sortie de l'API)

@@ -45,6 +45,19 @@ def get_role_name(user: User) -> str | None:
     return user.role.name if user.role else None
 
 
+def can_manage_superuser_flag(actor: User) -> bool:
+    """Indique si `actor` peut accorder ou retirer le statut `is_superuser`.
+
+    Réservé aux superutilisateurs. Ce statut court-circuite `require_roles` et
+    `can_manage_role` : l'accorder est strictement plus puissant qu'attribuer le
+    rôle `administrateur` (ce qu'un administrateur normal ne peut déjà pas
+    faire). Il ne suit donc pas `can_manage_role`, qui ne raisonne que sur le
+    nom de rôle et jamais sur ce flag.
+    """
+
+    return actor.is_superuser
+
+
 def can_manage_role(actor: User, target_role_name: str | None) -> bool:
     """Vérifie si `actor` (un membre du staff) peut gérer un utilisateur ayant `target_role_name`.
 
@@ -71,6 +84,7 @@ __all__ = [
     "RESPONSABLE_SAV_MANAGEABLE_ROLES",
     "STAFF_ROLES",
     "can_manage_role",
+    "can_manage_superuser_flag",
     "get_role_name",
     "require_document_manager",
     "require_roles",
