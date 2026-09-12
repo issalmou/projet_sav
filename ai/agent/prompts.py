@@ -137,30 +137,16 @@ ticket (à la demande du client). Le message actuel est sa réponse.
 
 
 def build_diagnostic_recap(conversation: Conversation, events: list[ConversationEvent]) -> str | None:
-    """Récapitule le diagnostic déjà mené, pour le réinjecter au tour suivant.
+    """Récapitule le diagnostic déjà mené, pour le réinjecter au tour suivant
+    (l'état LangGraph étant volatil, l'agent oublierait sinon d'un tour à l'autre).
 
-    L'état LangGraph étant volatil, sans ce récapitulatif l'agent oublierait au
-    tour N+1 ce qu'il a cherché / proposé / le retour du client.
+    Pas de troncature ici : la taille est déjà bornée en amont par
+    `submit_diagnosis` (seuil d'échecs) et le nombre d'étapes par diagnostic ;
+    ajouter une limite ici dupliquerait une règle qui appartient à `tools.py`.
 
-    A2 (audit) : cette fonction n'implémente VOLONTAIREMENT aucune troncature.
-    Sa taille est déjà bornée en amont, à la source : `submit_diagnosis`
-    (`app.ai.agent.tools`) refuse tout nouveau diagnostic dès que
-    `AGENT_ESCALATION_MAX_FAILED_ATTEMPTS` est atteint (garde-fou M2, qui rend
-    l'escalade obligatoire) — au plus `AGENT_ESCALATION_MAX_FAILED_ATTEMPTS`
-    événements `diagnosis`/`feedback` peuvent donc jamais exister pour une
-    conversation, et chaque diagnostic a lui-même au plus 8 étapes
-    (`tools._MAX_STEPS`). Les événements `escalation`/`ticket` ne sont pas
-    repris ici (non pertinents pour orienter le PROCHAIN diagnostic). Une
-    troncature aveugle ferait perdre de l'information utile pour un gain
-    illusoire ; ajouter une limite ici dupliquerait une règle métier qui
-    n'appartient qu'à `tools.py`.
-
-    Multi-sujets (audit, point 4) : `events` est scopé au cycle de
-    diagnostic EN COURS via `events_since_last_new_issue` — un incident
-    précédent déjà conclu (résolu, ou ticketé puis fermé) n'apparaît plus
-    ici, pour ne jamais mélanger deux problèmes distincts dans la tête de
-    l'agent. Rien n'est supprimé : seul CE récapitulatif « vivant » est
-    scopé, la table `conversation_events` reste intégralement consultable.
+    Scopé au cycle de diagnostic en cours via `events_since_last_new_issue` :
+    un incident précédent déjà conclu n'apparaît plus ici, mais reste
+    intégralement consultable dans `conversation_events`.
     """
 
     events = events_since_last_new_issue(events)

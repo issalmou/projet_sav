@@ -42,20 +42,16 @@ class AgentContext:
     proposed_summary: str | None = None
     tool_trace: list[str] = field(default_factory=list)
 
-    # Garde-fou B2 : une proposition de ticket faite PENDANT ce run ne peut
-    # jamais être confirmée dans le même run (la confirmation doit venir d'un
-    # message client d'un tour ultérieur).
+    # Une proposition de ticket faite pendant ce run ne peut jamais être
+    # confirmée dans le même run (confirmation exigée à un tour ultérieur).
     ticket_proposed_this_run: bool = False
     # Vrai si un ticket a été créé par escalade automatique pendant ce run.
     escalated_this_run: bool = False
 
-    # Garde-fou B6 (C1) : vrai si un ticket ACTIF existe déjà pour cette
-    # conversation, DEPUIS UN TOUR ANTÉRIEUR (calculé une fois, avant tout
-    # outil, par `SavAgent.run_turn` via `TicketService`). Distinct de
-    # `created_ticket_id`, qui ne reflète qu'un ticket créé PENDANT ce run :
-    # sans ce champ, le gate ne pouvait pas savoir qu'un ticket déjà ouvert
-    # dispense l'agent de relancer un diagnostic (l'escalade est une étape
-    # terminale, cf. CDC §17 "Transfert technicien").
+    # Vrai si un ticket actif existe déjà depuis un tour antérieur (calculé
+    # une fois par `SavAgent.run_turn`, avant tout outil) : distinct de
+    # `created_ticket_id`, qui ne reflète qu'un ticket créé pendant ce run.
+    # Un ticket déjà ouvert dispense le gate de relancer un diagnostic.
     has_active_ticket: bool = False
 
     def __post_init__(self) -> None:
@@ -63,11 +59,9 @@ class AgentContext:
         self._conversation_id: UUID = self.conversation.id
         self._user_id: UUID = self.user.id
         self._product_id: UUID = self.conversation.product_id
-        # Garde-fou B6 (backend, pas seulement le prompt) : snapshot pris à
-        # l'ouverture du tour, avant toute exécution d'outil. Permet au graphe
-        # de détecter si un diagnostic était en attente de retour client AU
-        # DÉBUT du tour et de vérifier que `record_client_feedback` a bien été
-        # appelé avant de laisser l'agent conclure en texte libre.
+        # Snapshot pris à l'ouverture du tour, avant tout outil : permet au
+        # gate de savoir si un diagnostic était en attente de retour client
+        # AU DÉBUT du tour, indépendamment de ce qui change en cours de tour.
         self.turn_started_awaiting_feedback: bool = self.conversation.awaiting_step_feedback
 
     @property

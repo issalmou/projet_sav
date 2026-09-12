@@ -13,8 +13,10 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 
+# --extra-index-url CPU : ce conteneur n'a pas de GPU, la roue torch par
+# défaut sur PyPI télécharge inutilement plusieurs Go de bibliothèques CUDA.
 RUN python -m pip install --upgrade pip \
-	&& pip install -r requirements.txt
+	&& pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Le code s'importe partout comme `app.xxx` (ex: CMD ci-dessous) : le
 # contexte de build est le contenu du package `app`, il doit donc être copié
@@ -22,6 +24,14 @@ RUN python -m pip install --upgrade pip \
 # `ModuleNotFoundError: No module named 'app'` au démarrage d'uvicorn.
 COPY . ./app
 
+RUN useradd --create-home --uid 1000 appuser \
+	&& chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Migrations puis seed idempotent avant de démarrer l'API (identique à la
+# commande définie dans docker-compose.yml, qui la remplace de toute façon
+# quand le service est lancé via compose — présent ici pour un `docker run`
+# autonome).
+CMD ["sh", "-c", "cd app && alembic upgrade head && python -m app.database.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

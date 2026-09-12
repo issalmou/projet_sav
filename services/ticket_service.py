@@ -1,4 +1,4 @@
-"""Service métier des tickets SAV (CDC semaine 5/6).
+"""Service métier des tickets SAV.
 
 Les règles d'accès (visibilité par rôle, ownership) sont appliquées ici,
 dans le service — jamais uniquement dans la route — comme pour
@@ -23,10 +23,8 @@ _TICKET_RELATIONSHIPS = (
     selectinload(Ticket.product),
 )
 
-# Décision de conception (tâche 7, PAS une exigence du CDC) : "closed" est le
-# seul statut terminal ; "resolved" reste considéré comme actif. Centralisé
-# ici pour que toute future logique de dédoublonnage/filtrage réutilise la
-# même définition plutôt que de la redupliquer.
+# Décision de conception (pas une exigence du CDC) : "closed" est le seul
+# statut terminal ; "resolved" reste considéré comme actif.
 _TERMINAL_TICKET_STATUSES = (TicketStatus.CLOSED.value,)
 
 
@@ -70,10 +68,9 @@ class TicketService:
         """Création automatique (self-service) : le ticket appartient toujours à `user`.
 
         Utilisé exclusivement par l'agent SAV (outil create_ticket) — jamais par
-        la route HTTP publique, réservée au staff depuis la correction RBAC
-        de la semaine 6 (voir `create_ticket_for_client`). `TicketAutoCreate`
-        ne porte pas de `client_id` : le propriétaire est toujours
-        l'utilisateur pour lequel le service agit.
+        la route HTTP publique, réservée au staff (voir `create_ticket_for_client`).
+        `TicketAutoCreate` ne porte pas de `client_id` : le propriétaire est
+        toujours l'utilisateur pour lequel le service agit.
 
         Le ticket est automatiquement affecté à un technicien actif choisi au
         hasard (`ticket_assignment.pick_technician`). `None` si aucun technicien
@@ -92,14 +89,12 @@ class TicketService:
         )
 
     async def create_ticket_for_client(self, staff_user: User, data: TicketCreate) -> Ticket:
-        """Création manuelle par le staff, au nom du client `data.client_id` (correction RBAC, semaine 6).
+        """Création manuelle par le staff, au nom du client `data.client_id`.
 
-        Décision de conception (PAS une exigence du CDC) : seul le staff
-        (`STAFF_ROLES`/superuser) peut créer un ticket manuellement, et
-        toujours au nom d'un client précis — jamais pour lui-même. Vérifié
-        ici en plus de la route (défense en profondeur, même principe que
-        `_can_view`/`_can_modify` ailleurs dans ce service) : `client_id`
-        doit référencer un utilisateur existant ayant le rôle `client`.
+        Décision de conception (pas une exigence du CDC) : seul le staff peut
+        créer un ticket manuellement, toujours au nom d'un client précis —
+        jamais pour lui-même. Vérifié ici en plus de la route (défense en
+        profondeur) : `client_id` doit avoir le rôle `client`.
         """
 
         if not _is_staff_or_superuser(staff_user):
@@ -293,9 +288,8 @@ def _can_modify(ticket: Ticket, user: User) -> bool:
 def _is_staff_or_superuser(user: User) -> bool:
     """Staff (`STAFF_ROLES`) ou superuser : condition commune à toutes les actions de gestion.
 
-    Factorisé pour que `_can_reassign` (tâche 8) et `create_ticket_for_client`
-    (correction RBAC, semaine 6) partagent exactement la même règle plutôt
-    que de la redéfinir séparément.
+    Factorisé pour que `_can_reassign` et `create_ticket_for_client`
+    partagent exactement la même règle.
     """
 
     if user.is_superuser:
@@ -307,11 +301,9 @@ def _is_staff_or_superuser(user: User) -> bool:
 def _can_reassign(user: User) -> bool:
     """Seul le staff (`STAFF_ROLES`) ou un superuser peut modifier `assigned_technician_id`.
 
-    Décision de conception (tâche 8, PAS une exigence du CDC) : la
-    réassignation est une action de gestion, jamais confiée à l'acteur
-    opérationnel (technicien) — par analogie avec `User.role_id`
-    (`core/permissions.py`, `can_manage_role`), jamais modifiable par
-    l'utilisateur concerné lui-même.
+    Décision de conception (pas une exigence du CDC) : la réassignation est
+    une action de gestion, jamais confiée au technicien concerné lui-même —
+    même principe que `User.role_id` (`core/permissions.py`).
     """
 
     return _is_staff_or_superuser(user)

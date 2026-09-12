@@ -29,6 +29,17 @@ class ClientProductAssign(BaseModel):
     items: list[ClientProductItem] = Field(min_length=1)
 
 
+class ClientProductSync(BaseModel):
+    """Corps de `PUT /clients/{client_id}/products`.
+
+    `items` décrit l'état final souhaité (remplacement complet) : un produit
+    déjà affecté mais absent d'`items` est retiré. Liste vide autorisée
+    (volontairement, contrairement à `ClientProductAssign`) : retire tout.
+    """
+
+    items: list[ClientProductItem] = Field(default_factory=list)
+
+
 class ClientProductRead(ProductRead):
     """Un produit affecté à un client, avec la quantité affectée."""
 
@@ -37,4 +48,4 @@ class ClientProductRead(ProductRead):
     qte: int
 
 
-__all__ = ["ClientProductAssign", "ClientProductItem", "ClientProductRead"]
+__all__ = ["ClientProductAssign", "ClientProductItem", "ClientProductRead", "ClientProductSync"]

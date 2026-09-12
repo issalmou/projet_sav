@@ -27,14 +27,9 @@ if TYPE_CHECKING:
 
 # Types d'événements consignés. Volontairement fermé (CheckConstraint) :
 # ajouter un type = une migration, pas une valeur libre venue du LLM.
-#
-# "new_issue" (audit, point 4 — multi-sujets) : marqueur de frontière posé
-# par l'outil `start_new_issue` quand le client décrit, dans la MÊME
-# conversation, un problème distinct du précédent (déjà résolu ou déjà
-# ticketé-puis-fermé). Il délimite un nouveau CYCLE de diagnostic sans
-# jamais effacer l'historique : `events_since_last_new_issue` ci-dessous
-# scope la lecture (récapitulatif LLM, description de ticket) au cycle en
-# cours, tandis que la table reste intégralement consultable pour l'audit.
+# "new_issue" marque la frontière entre deux incidents successifs sur la
+# même conversation, posée par `start_new_issue` ; voir
+# `events_since_last_new_issue` pour la lecture scopée au cycle en cours.
 EVENT_TYPES = ("search", "diagnosis", "feedback", "escalation", "ticket", "new_issue")
 
 
@@ -64,13 +59,10 @@ class ConversationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 def events_since_last_new_issue(events: list["ConversationEvent"]) -> list["ConversationEvent"]:
-    """Ne garde que les événements du cycle de diagnostic EN COURS.
+    """Ne garde que les événements du cycle de diagnostic en cours.
 
-    `events` doit être trié chronologiquement (comme le renvoie déjà
-    `_load_events`/`_get_diagnostic_events`). S'il n'y a jamais eu de
-    frontière `new_issue`, la conversation n'a qu'un seul cycle : tous les
-    événements sont retournés tels quels (comportement inchangé pour toute
-    conversation à sujet unique — aucune régression).
+    `events` doit être trié chronologiquement. Sans frontière `new_issue`,
+    tous les événements sont retournés tels quels.
     """
 
     last_boundary = None

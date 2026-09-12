@@ -20,31 +20,22 @@ Le graphe est une boucle ReAct, avec un garde-fou backend supplémentaire :
                   ▼
               force_invariant → END
 
-- `agent`    : un tour LLM AVEC outils (`LLMService.run_tools`). Renvoie soit
+- `agent`    : un tour LLM avec outils (`LLMService.run_tools`). Renvoie soit
                du texte final, soit des appels d'outils.
 - `tools`    : exécute chaque outil (`app.ai.agent.tools.execute_tool`) avec le
-               `AgentContext` (sécurité déterministe), ré-injecte les résultats.
-- `gate`     : garde-fou B6 — le backend, pas seulement le prompt, vérifie que
-               l'agent a respecté l'enchaînement search_docs → submit_diagnosis
-               → record_client_feedback avant de le laisser conclure en texte
-               libre. Sinon, il injecte une consigne corrective et renvoie
-               l'agent en boucle (borné par `AGENT_MAX_ITERATIONS`, comme le
-               garde-fou anti-boucle existant).
-- `finalize` : garde-fou anti-boucle — force une réponse texte sans outil
-               quand le quota d'itérations est atteint alors qu'un appel
-               d'outil restait en attente.
-- `force_invariant` (A1) : dernier recours quand le LLM ignore systématiquement
-               les nudges du gate jusqu'à épuisement du quota. Ne s'applique
-               qu'aux DEUX invariants pour lesquels le backend dispose d'une
-               action RÉELLE et non inventée : exécuter un vrai search_docs
-               (avec la question brute du client comme requête), ou exécuter
-               une vraie escalade (description de ticket assemblée par le
-               repli déterministe de `TicketSummaryService`, jamais inventée).
-               `submit_diagnosis` et `record_client_feedback` ne peuvent
-               JAMAIS être forcés ainsi : ils exigeraient de fabriquer une
-               cause/des étapes ou un retour client qui n'existent pas —
-               dans ces cas, le texte non conforme du LLM est accepté tel
-               quel (limite assumée, cf. `_gate_violation`).
+               `AgentContext`, ré-injecte les résultats.
+- `gate`     : le backend, pas seulement le prompt, vérifie que l'agent a
+               respecté l'enchaînement search_docs → submit_diagnosis →
+               record_client_feedback avant de le laisser conclure en texte
+               libre ; sinon il injecte une consigne corrective et reboucle.
+- `finalize` : force une réponse texte sans outil quand le quota d'itérations
+               est atteint alors qu'un appel d'outil restait en attente.
+- `force_invariant` : dernier recours quand le LLM ignore les nudges du gate
+               jusqu'à épuisement du quota. Ne s'applique qu'aux invariants
+               pour lesquels le backend a une action réelle à exécuter à sa
+               place (search_docs, escalate_to_technician) — les autres
+               (submit_diagnosis, record_client_feedback) exigeraient de
+               fabriquer un contenu qui n'existe pas, donc restent non forcés.
 
 La persistance métier (conversation, messages, tickets) reste dans les
 services : le graphe ne manipule que la liste de messages du tour courant.
@@ -89,28 +80,10 @@ _GENERIC_FALLBACK_REPLY = (
     "Je n'ai pas pu finaliser ma réponse. Pouvez-vous reformuler ou préciser votre demande ?"
 )
 
-# Outils qui répondent légitimement à une demande SANS passer par le
-# diagnostic (garantie, statut de ticket) : leur simple PRÉSENCE dans
-# `ctx.tool_trace` dispense de l'exigence search_docs (§ _gate_violation) —
-# sinon une simple question de garantie forcerait une recherche documentaire
-# inutile. Volontairement LIMITÉ à des outils purement informatifs qui ne
-# peuvent jamais être refusés par une précondition métier : `get_warranty` et
-# `check_ticket_status` répondent inconditionnellement.
-#
-# I1 : `request_ticket_creation` / `create_ticket` / `escalate_to_technician`
-# ont été RETIRÉS de cette liste. Ils ont chacun leur propre précondition
-# métier dans `tools.py` (search_performed, pending_ticket_confirmation,
-# seuil d'escalade) qui peut REFUSER l'appel — mais `execute_tool` ajoute le
-# nom de l'outil à `tool_trace` même en cas de refus (c'est un texte renvoyé
-# à l'agent, pas une exception). Les garder ici permettait à l'agent de
-# contourner totalement `search_docs` en tentant (et se faisant refuser) un
-# de ces trois outils en tout premier message, puis en concluant en texte
-# libre sans avoir jamais consulté la documentation. Quand l'un de ces outils
-# RÉUSSIT réellement, `search_performed` est de toute façon déjà vrai à ce
-# moment-là (leurs préconditions l'exigent, transitivement pour l'escalade
-# via le cycle diagnostic → échec → tentative suivante) : l'exemption n'était
-# donc jamais nécessaire pour le cas de succès, seulement exploitable pour le
-# cas de refus.
+# Outils purement informatifs dont la présence dans `ctx.tool_trace` dispense
+# de l'exigence search_docs — jamais les outils de ticket : `execute_tool` les
+# ajoute au trace même en cas de refus, ce qui permettrait de contourner
+# search_docs en tentant (et se faisant refuser) un outil de ticket en premier.
 _NON_DIAGNOSTIC_TOOLS = frozenset({"get_warranty", "check_ticket_status"})
 
 _GATE_NUDGES = {
@@ -136,24 +109,17 @@ _GATE_NUDGES = {
     ),
 }
 
-# A1 : les deux SEULS motifs de garde-fou pour lesquels le backend dispose
-# d'une action de dernier recours RÉELLE et non inventée (cf. force_invariant_node
-# ci-dessous) — construit les arguments de l'appel à partir de la question
-# brute du client (search_docs) ou sans contenu à inventer (escalate_to_technician,
-# dont le repli déterministe de TicketSummaryService assemble la description).
+# Les deux seuls motifs de garde-fou pour lesquels le backend a une action de
+# dernier recours réelle (cf. `force_invariant_node`), sans rien inventer.
 _FORCEABLE_INVARIANTS = {
     "search_docs": lambda last_user_text: {"query": last_user_text},
     "escalate_to_technician": lambda last_user_text: {"reason": ""},
 }
 
 
-# Filet de sécurité (point 12 de l'audit) : certains modèles locaux (observé
-# avec qwen2.5, notamment 7b) écrivent parfois `record_client_feedback(...)`
-# comme TEXTE au lieu d'un vrai appel d'outil structuré. Ce format strict est
-# le SEUL reconnu — nom d'outil exact, unique paramètre `resolved`, valeur
-# `true`/`false` uniquement (jamais quotée, jamais numérique, jamais
-# accompagnée d'un autre paramètre). Aucun `eval`/`exec` : une seule capture
-# regex, mappée explicitement sur un booléen.
+# Certains modèles locaux écrivent parfois `record_client_feedback(...)` comme
+# texte au lieu d'un vrai appel d'outil : reconnu seulement sous ce format
+# strict, sans eval/exec — une capture regex mappée explicitement sur un booléen.
 _PSEUDO_FEEDBACK_CALL_RE = re.compile(
     r"\brecord_client_feedback\s*\(\s*resolved\s*=\s*(true|false)\s*\)", re.IGNORECASE
 )
@@ -172,17 +138,11 @@ def _parse_pseudo_feedback_call(text: str) -> bool | None:
 
 
 def _strip_unanswered_tool_calls(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Retire d'un message `assistant` les `tool_calls` qui n'ont pas reçu de réponse d'outil.
+    """Retire d'un message `assistant` les `tool_calls` restés sans réponse d'outil.
 
-    Le nœud `finalize` force une réponse texte : un appel d'outil resté en
-    suspens (quota d'itérations atteint pendant que l'agent en demandait un) ne
-    sera jamais exécuté. Le laisser dans l'historique produit une séquence
-    **invalide** pour les API chat/completions compatibles OpenAI (OpenAI, Qwen,
-    Llama, Ollama) et pour Mistral : un message `assistant` porteur de
-    `tool_calls` DOIT être suivi d'un message `tool` pour chaque `tool_call_id`.
-
-    Un message assistant vidé de ses `tool_calls` et sans contenu texte est
-    retiré (il n'apporte plus rien au contexte).
+    Un appel d'outil jamais exécuté laissé dans l'historique produit une
+    séquence invalide pour les API compatibles OpenAI/Mistral (un message
+    `assistant` porteur de `tool_calls` doit être suivi d'un `tool` par id).
     """
 
     answered_ids = {m.get("tool_call_id") for m in messages if m.get("role") == "tool"}
@@ -218,23 +178,14 @@ def _gate_violation(ctx: AgentContext) -> str | None:
 
     conv = ctx.conversation
 
-    # 1) Un diagnostic était en attente de retour client à l'OUVERTURE de ce
-    #    tour : record_client_feedback est obligatoire avant toute réponse.
-    #    Test sur `ctx.tool_trace` (l'outil a-t-il été appelé CE tour), pas
-    #    sur l'état courant de `awaiting_step_feedback` — sinon un nouveau
-    #    submit_diagnosis (qui remet `awaiting_step_feedback=True` pour le
-    #    PROCHAIN tour) redéclencherait cette règle à tort dans le même tour.
+    # Test sur `ctx.tool_trace` (appelé CE tour), pas sur l'état courant de
+    # `awaiting_step_feedback` : un nouveau submit_diagnosis le remet à True
+    # pour le tour suivant et redéclencherait sinon cette règle à tort.
     if ctx.turn_started_awaiting_feedback and "record_client_feedback" not in ctx.tool_trace:
         return "record_client_feedback"
 
-    # 2) Aucune recherche documentaire n'a jamais eu lieu pour cette
-    #    conversation ET l'agent n'en a pas non plus TENTÉ une ce tour (que
-    #    l'appel ait réussi ou échoué — un search_docs en erreur, ex. RAG
-    #    indisponible, compte comme une tentative : sinon le backend forcerait
-    #    une boucle infinie de nouvelles tentatives tant que le RAG est en
-    #    panne), et l'agent n'a invoqué aucun autre outil légitime ce tour
-    #    (garantie, statut de ticket, chemin d'escalade) : search_docs est
-    #    obligatoire avant toute réponse technique.
+    # Un search_docs en erreur compte comme une tentative (sinon boucle
+    # infinie tant que le RAG est indisponible).
     if (
         not conv.search_performed
         and "search_docs" not in ctx.tool_trace
@@ -242,17 +193,10 @@ def _gate_violation(ctx: AgentContext) -> str | None:
     ):
         return "search_docs"
 
-    # 3) La documentation a été consultée, aucun diagnostic n'est en attente
-    #    ni résolu, aucun ticket n'a été créé ce tour NI n'est déjà actif
-    #    depuis un tour antérieur (C1 : l'escalade est une étape terminale —
-    #    un message de suivi après création du ticket, ex. « des nouvelles ? »
-    #    via check_ticket_status, ne doit pas relancer un diagnostic complet) :
-    #    un diagnostic structuré (submit_diagnosis) est obligatoire avant de
-    #    répondre — SAUF si le seuil d'échecs est déjà atteint (M2), auquel
-    #    cas c'est l'escalade elle-même qui devient obligatoire : le backend
-    #    n'autorise plus le LLM à repousser indéfiniment le transfert au
-    #    technicien en proposant encore et encore de nouveaux diagnostics
-    #    (CDC §17 : « Résolu ? Non → Création ticket → Transfert technicien »).
+    # Un ticket déjà actif (même créé lors d'un tour antérieur) dispense de
+    # relancer un diagnostic : l'escalade est une étape terminale. Sinon,
+    # submit_diagnosis est obligatoire avant de répondre, sauf si le seuil
+    # d'échecs est atteint — l'escalade devient alors elle-même obligatoire.
     if (
         conv.search_performed
         and not conv.awaiting_step_feedback
@@ -299,13 +243,9 @@ def _build_graph(llm: LLMService, ctx: AgentContext, user_message: str):
     async def gate_node(state: AgentState) -> dict[str, Any]:
         reason = _gate_violation(ctx)
 
-        # Filet de sécurité (Option B, point 12) : uniquement lorsque B6 a
-        # déterminé que record_client_feedback est réellement requis MAINTENANT,
-        # et que le texte produit par le LLM correspond EXACTEMENT au format
-        # strict attendu — jamais en dehors de ce contexte précis. Le véritable
-        # `record_client_feedback` est exécuté via `execute_tool` (mêmes
-        # validations, compteurs, événements que pour un vrai appel d'outil) ;
-        # aucune logique métier n'est dupliquée ici.
+        # Salvage uniquement quand record_client_feedback est réellement requis
+        # et que le texte correspond exactement au format pseudo-appel attendu ;
+        # le vrai outil est exécuté via `execute_tool`, rien n'est dupliqué ici.
         if reason == "record_client_feedback":
             last_text = state["messages"][-1].get("content") or ""
             resolved = _parse_pseudo_feedback_call(last_text)
@@ -330,19 +270,13 @@ def _build_graph(llm: LLMService, ctx: AgentContext, user_message: str):
         return {"messages": [{"role": "user", "content": nudge}], "iterations": 0}
 
     async def force_invariant_node(state: AgentState) -> dict[str, Any]:
-        """A1 : dernier recours anti-boucle, distinct de `finalize_node`.
-
-        N'est atteint que si le quota d'itérations est épuisé ALORS QUE le
-        gate identifie encore une violation FORÇABLE (`_FORCEABLE_INVARIANTS`).
-        Exécute le VRAI outil (jamais un contenu inventé), puis redemande une
-        dernière fois au LLM de répondre en s'appuyant sur ce résultat réel.
-        """
+        """Dernier recours anti-boucle, distinct de `finalize_node` : exécute le
+        vrai outil (jamais un contenu inventé) puis redemande une réponse."""
 
         reason = _gate_violation(ctx)
         tool_name = reason if reason in _FORCEABLE_INVARIANTS else "search_docs"
-        # Le message CLIENT réel de ce tour (jamais une consigne corrective du
-        # gate, elle-même injectée avec role="user" et donc indiscernable par
-        # simple filtrage de rôle dans `state["messages"]`).
+        # Le message client réel de ce tour, pas une consigne du gate (elle
+        # aussi injectée en role="user", donc indiscernable par simple filtrage).
         arguments = _FORCEABLE_INVARIANTS[tool_name](user_message)
         call_id = f"call_{uuid.uuid4().hex[:12]}"
         output = await execute_tool(ctx, tool_name, arguments)
@@ -383,19 +317,13 @@ def _build_graph(llm: LLMService, ctx: AgentContext, user_message: str):
     def route(state: AgentState) -> str:
         last = state["messages"][-1]
         if not last.get("tool_calls"):
-            # Réponse texte proposée : le backend vérifie l'enchaînement
-            # attendu avant de la laisser sortir (garde-fou B6).
             if state["iterations"] < MAX_AGENT_ITERATIONS:
                 if _gate_violation(ctx) is not None:
                     return "gate"
                 return END
-            # Quota d'itérations épuisé : le LLM a ignoré les nudges. Pour un
-            # invariant FORÇABLE (A1 : search_docs / escalate_to_technician),
-            # le backend agit lui-même en dernier recours plutôt que
-            # d'accepter une réponse non fondée ou une escalade esquivée.
-            # Pour les autres (submit_diagnosis, record_client_feedback), rien
-            # de non inventé ne peut être forcé : le texte, même imparfait,
-            # vaut mieux qu'une boucle sans fin.
+            # Quota épuisé, LLM non conforme : force un invariant forçable en
+            # dernier recours, sinon accepte le texte tel quel (mieux qu'une
+            # boucle sans fin).
             if _gate_violation(ctx) in _FORCEABLE_INVARIANTS:
                 return "force_invariant"
             return END
@@ -451,8 +379,7 @@ class SavAgent:
             ticket_service=TicketService(session),
             llm_service=self._llm,
         )
-        # C1 : calculé une seule fois, AVANT tout outil de ce tour — reflète
-        # un ticket créé lors d'un tour antérieur (cf. AgentContext.has_active_ticket).
+        # Calculé une seule fois, avant tout outil de ce tour (cf. AgentContext.has_active_ticket).
         ctx.has_active_ticket = (
             await ctx.ticket_service.get_active_ticket_by_conversation(ctx.conversation_id)
         ) is not None
@@ -499,15 +426,10 @@ def _extract_final_reply(messages: list[dict[str, Any]]) -> str:
     return _GENERIC_FALLBACK_REPLY
 
 
-# A3 : filet de sécurité backend contre la fuite de contenu interne dans la
-# réponse client — observé en pratique (Ollama qwen2.5) : un modèle local
-# faible peut, malgré la consigne du prompt, citer ou paraphraser le bloc
-# `[RÉCAPITULATIF DU DIAGNOSTIC EN COURS]` (`build_diagnostic_recap`) tel
-# quel dans sa réponse finale. Détection par marqueurs textuels distinctifs
-# — des expressions techniques qui n'apparaîtraient JAMAIS dans une réponse
-# client légitime et rédigée normalement. En cas de détection : substitution
-# par un message de secours générique, JAMAIS une tentative de "nettoyer" le
-# texte (qui risquerait de le dénaturer ou de laisser passer une variante).
+# Un modèle local faible peut citer/paraphraser le récapitulatif interne
+# (`build_diagnostic_recap`) dans sa réponse finale malgré la consigne du
+# prompt : détecté par marqueurs textuels distinctifs, remplacé par un
+# message générique plutôt qu'un nettoyage qui risquerait de laisser passer une variante.
 _INTERNAL_LEAK_MARKERS = (
     "récapitulatif du diagnostic",
     "ne le recopie ni ne le paraphrase",

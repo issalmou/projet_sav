@@ -51,17 +51,27 @@ Chaque étape indique si elle se fait **en direct via l'API (Swagger)** ou **via
 
 ## Partie C — Diagnostic → Escalade → Ticket (script, voir note)
 
-`DiagnosticService` n'a pas de route HTTP (décision actée depuis la Semaine 5). Exécuter, depuis `backend/` :
+Le diagnostic/l'escalade n'ont pas de route HTTP dédiée : cette logique vit entièrement
+dans l'agent LangGraph (`app.ai.agent`), piloté via `POST /chat/message` — le même
+endpoint que la Partie B, pas un service séparé. Exécuter, depuis `backend/` :
 
 ```bash
-PYTHONPATH=. python demo/demo_diagnostic.py --live
+PYTHONPATH=. python app/demo/demo_diagnostic.py --live
 ```
 
-Ce script (nouveau, ajouté pour cette démonstration) :
-1. Envoie une première question technique sur une panne de pompe à chaleur → le RAG ne trouve rien de pertinent (notre base documentaire couvre les avantages/primes, pas le dépannage) → statut `EN_COURS`, l'agent demande une vérification, conformément à la règle CDC §14 (jamais d'escalade dès le 1er message).
-2. Envoie une seconde question confirmant que le problème persiste → si le LLM juge ne pas pouvoir résoudre, statut `A_ESCALADER` et **ticket réellement créé et persisté en base**.
+Ce script :
+1. Envoie une première question technique sur une panne de pompe à chaleur → le RAG ne
+   trouve rien de pertinent (notre base documentaire couvre les avantages/primes, pas le
+   dépannage) → le garde-fou backend (B6) impose quand même search_docs PUIS
+   submit_diagnosis avant toute réponse ; l'agent propose une vérification, conformément
+   à la règle CDC §14 (jamais d'escalade dès le 1er message).
+2. Envoie une seconde question confirmant que le problème persiste → l'agent enregistre
+   l'échec (record_client_feedback), relance un nouveau diagnostic (obligatoire tant que
+   le seuil d'échecs n'est pas atteint), et transmet la demande explicite de ticket.
+3. Confirme au 3e message → **ticket réellement créé et persisté en base**, transmis à
+   un technicien.
 
-Le mode `--live` utilise le vrai LLM configuré : la décision finale (résolu/escaladé) n'est pas scriptée, c'est une vraie réponse du modèle. Pour une démonstration garantie reproductible (ex. présentation enregistrée), utiliser `--deterministic` à la place (séquence de réponses fixes, même principe que `tests/test_diagnostic_integration.py`).
+Le mode `--live` utilise le vrai LLM configuré : la décision finale (résolu/escaladé) n'est pas scriptée, c'est une vraie réponse du modèle. Pour une démonstration garantie reproductible (ex. présentation enregistrée), utiliser `--deterministic` à la place (séquence de réponses fixes correspondant à l'enchaînement réel imposé par le garde-fou B6).
 
 ## Partie D — Traitement du ticket (en direct, Swagger)
 
@@ -78,4 +88,11 @@ Le mode `--live` utilise le vrai LLM configuré : la décision finale (résolu/e
 
 ## Note — pourquoi certaines étapes passent par un script
 
-Deux capacités existent et sont testées (`services/diagnostic_service.py`, `services/document.py::index_pending_documents`) mais n'ont **jamais été exposées par une route API** — ce n'était pas une exigence explicite du CDC et n'a pas été développé comme tel au fil des 8 semaines. Plutôt que d'ajouter maintenant une route non prévue (hors périmètre de la Semaine 8, décision qui vous appartient), la démonstration utilise ces services directement en Python, exactement comme le fait déjà la suite de tests. Si vous souhaitez exposer ces routes pour de futures démonstrations, c'est une décision à valider séparément.
+Le diagnostic/l'escalade (Partie C) passent désormais par `POST /chat/message`, comme
+la Partie B — la seule raison d'utiliser `demo_diagnostic.py` plutôt que Swagger est de
+rejouer une séquence de messages en une seule commande. Seule l'indexation des documents
+(`services/document.py::index_pending_documents`) n'a **jamais été exposée par une route
+API** — ce n'était pas une exigence explicite du CDC. Plutôt que d'ajouter maintenant une
+route non prévue (décision qui vous appartient), la démonstration l'utilise directement
+en Python, exactement comme le fait déjà la suite de tests. Si vous souhaitez exposer
+cette route pour de futures démonstrations, c'est une décision à valider séparément.

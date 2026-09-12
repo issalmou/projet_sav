@@ -6,8 +6,8 @@ l'affectation de produits EXISTANTS à un client — jamais la création,
 la modification ou la suppression d'un produit (réservées à `/products`).
 
 Accès (RBAC existant, `core/permissions.py`) :
-- `POST` / `DELETE` : administrateur, responsable_sav, superuser ;
-- `GET`             : le client lui-même, ou le staff (administrateur /
+- `POST` / `PUT` / `DELETE` : administrateur, responsable_sav, superuser ;
+- `GET`                     : le client lui-même, ou le staff (administrateur /
   responsable_sav / superuser).
 """
 from typing import Annotated
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, get_db_session
 from app.core.permissions import STAFF_ROLES, get_role_name, require_roles
 from app.models.user import User
-from app.schemas.client_product import ClientProductAssign, ClientProductRead
+from app.schemas.client_product import ClientProductAssign, ClientProductRead, ClientProductSync
 from app.services.client_product_service import (
     ClientNotFoundError,
     ClientProductService,
@@ -103,6 +103,44 @@ async def assign_client_products(
 
     try:
         return await service.assign_products(client_id, payload.items)
+    except (ClientNotFoundError, ProductsNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.put(
+    "/{client_id}/products",
+    response_model=list[ClientProductRead],
+    status_code=status.HTTP_200_OK,
+    summary="Remplace l'ensemble des produits affectés à un client",
+    description=(
+        "Remplace intégralement les produits affectés au client par l'état final "
+        "fourni : les produits absents d'`items` sont retirés, les nouveaux sont "
+        "ajoutés, les produits déjà affectés conservent ou mettent à jour leur "
+        "quantité. Contrairement à `POST` (purement additif), `items` peut être "
+        "vide pour retirer tous les produits du client. Opération atomique."
+    ),
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur / responsable_sav)."},
+        404: {"description": "client_id introuvable / sans le rôle client, ou product_id inconnu."},
+        422: {"description": "Payload invalide (qte < 1, ou mal formé)."},
+    },
+)
+async def sync_client_products(
+    client_id: UUID,
+    payload: ClientProductSync,
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    service: Annotated[ClientProductService, Depends(get_client_product_service)],
+) -> list[ClientProductRead]:
+    """Remplace l'état complet des produits d'un client par `items` (réservé au staff).
+
+    Corps : `{"items": [{"product_id": "...", "qte": N}]}` (`items` peut être
+    vide). Doublons de `product_id` fusionnés (dernière quantité gagnante) ;
+    transaction unique. Retourne l'état final des produits du client.
+    """
+
+    try:
+        return await service.sync_products(client_id, payload.items)
     except (ClientNotFoundError, ProductsNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 

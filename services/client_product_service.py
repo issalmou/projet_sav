@@ -12,6 +12,7 @@ Règles d'accès (appliquées dans `api/clients.py`, RBAC existant) :
 import uuid
 from uuid import UUID
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,6 +113,68 @@ class ClientProductService:
 
         return await self.list_products(client_id)
 
+    async def sync_products(
+        self, client_id: UUID, items: list[ClientProductItem]
+    ) -> list[ClientProductRead]:
+        """Remplace l'intégralité des produits affectés à `client_id` par `items`.
+
+        Contrairement à `assign_products` (purement additif), ceci retire
+        aussi les produits déjà affectés mais absents d'`items` — `items` vide
+        retire tous les produits du client.
+
+        Verrou DB sur le client avant le DELETE : sans lui, deux sync
+        concurrents sur le même client (ex. sync(B) et sync(C)) pourraient
+        chacun supprimer l'état de l'autre puis insérer le leur, laissant
+        {B, C} en base au lieu de l'état voulu par l'un OU l'autre appel.
+        """
+
+        await self._get_client_or_raise(client_id, for_update=True)
+
+        # dédup par product_id, dernière quantité gagnante (même règle qu'assign_products)
+        merged: dict[UUID, int] = {}
+        for item in items:
+            merged[item.product_id] = item.qte
+        product_ids = list(merged.keys())
+
+        if product_ids:
+            found = await self.session.execute(select(Product.id).where(Product.id.in_(product_ids)))
+            found_ids = set(found.scalars().all())
+            missing = [pid for pid in product_ids if pid not in found_ids]
+            if missing:
+                raise ProductsNotFoundError(
+                    "Unknown product id(s): " + ", ".join(str(pid) for pid in missing)
+                )
+
+        # Retire les affectations existantes absentes de l'état final demandé.
+        delete_stmt = sa_delete(ClientProduct).where(ClientProduct.user_id == client_id)
+        if product_ids:
+            delete_stmt = delete_stmt.where(ClientProduct.product_id.not_in(product_ids))
+        await self.session.execute(delete_stmt)
+
+        if product_ids:
+            now = utcnow()
+            rows = [
+                {
+                    "id": uuid.uuid4(),
+                    "user_id": client_id,
+                    "product_id": pid,
+                    "qte": qte,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                for pid, qte in merged.items()
+            ]
+            stmt = pg_insert(ClientProduct.__table__).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "product_id"],
+                set_={"qte": stmt.excluded.qte, "updated_at": stmt.excluded.updated_at},
+            )
+            await self.session.execute(stmt)
+
+        await self.session.commit()
+
+        return await self.list_products(client_id)
+
     async def unassign_product(self, client_id: UUID, product_id: UUID) -> None:
         """Retire l'affectation d'un produit à `client_id`.
 
@@ -143,8 +206,17 @@ class ClientProductService:
         )
         return result.scalar_one_or_none() is not None
 
-    async def _get_client_or_raise(self, client_id: UUID) -> User:
-        user = await self.session.get(User, client_id)
+    async def _get_client_or_raise(self, client_id: UUID, *, for_update: bool = False) -> User:
+        if for_update:
+            # `of=User` : `User.role` est en LEFT OUTER JOIN (role_id nullable) —
+            # PostgreSQL refuse FOR UPDATE sur la table nullable d'un outer join
+            # sans restreindre explicitement quelle table verrouiller.
+            result = await self.session.execute(
+                select(User).where(User.id == client_id).with_for_update(of=User)
+            )
+            user = result.scalar_one_or_none()
+        else:
+            user = await self.session.get(User, client_id)
         if user is None or _role_name(user) != RoleName.CLIENT.value:
             raise ClientNotFoundError("Client not found")
         return user
