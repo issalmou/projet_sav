@@ -14,7 +14,9 @@ from app.core.config import settings
 from app.database.base import Base
 
 # Import des modèles pour enregistrer les tables dans Base.metadata.
+import app.models.client_product  # noqa: F401
 import app.models.conversation  # noqa: F401
+import app.models.conversation_event  # noqa: F401
 import app.models.document  # noqa: F401
 import app.models.message  # noqa: F401
 import app.models.product  # noqa: F401

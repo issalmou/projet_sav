@@ -7,7 +7,7 @@ charge à l'appelant (route ou service métier) de les traduire si besoin.
 """
 from app.ai.exceptions import LLMError, LLMRequestError
 from app.ai.prompts import build_title_prompt
-from app.ai.providers.base import LLMProvider, Message
+from app.ai.providers.base import LLMProvider, LLMResult, Message, ToolSpec
 from app.ai.providers.factory import LLMProviderFactory
 
 # Longueur maximale d'un titre de conversation généré (cohérent avec l'usage
@@ -30,6 +30,18 @@ class LLMService:
             raise LLMError("Cannot generate a reply from an empty message list")
 
         return await self._provider.agenerate(messages)
+
+    async def run_tools(self, messages: list[Message], tools: list[ToolSpec]) -> LLMResult:
+        """Un tour LLM avec outils : retourne du texte OU des appels d'outils à exécuter.
+
+        Utilisé par l'agent LangGraph (`app.ai.agent`). Reste indépendant du
+        fournisseur : c'est le provider injecté qui traduit vers son SDK.
+        """
+
+        if not messages:
+            raise LLMError("Cannot run a tool turn from an empty message list")
+
+        return await self._provider.agenerate_tools(messages, tools)
 
     async def generate_title(self, message: str, preferred_language: str = "fr") -> str:
         """Résume `message` en un titre court et compréhensible, dans la langue du client.

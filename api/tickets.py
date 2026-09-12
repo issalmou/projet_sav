@@ -11,13 +11,14 @@ la responsabilité HTTP (mapping des exceptions métier en codes de statut).
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db_session
 from app.core.permissions import STAFF_ROLES, require_roles
 from app.models.user import User
 from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
+from app.utils.constants import TicketStatus
 from app.services.ticket_service import (
     InvalidClientRoleError,
     InvalidTechnicianRoleError,
@@ -89,13 +90,21 @@ async def list_tickets(
     ticket_service: Annotated[TicketService, Depends(get_ticket_service)],
     limit: int = 50,
     offset: int = 0,
+    ticket_status: Annotated[TicketStatus | None, Query(alias="status")] = None,
 ) -> list[TicketRead]:
-    """Liste les tickets visibles par l'utilisateur authentifié (règles d'accès : tâche 5).
+    """Liste les tickets visibles par l'utilisateur authentifié.
 
-    Pagination `limit`/`offset`, même pattern que `GET /users` (`api/users.py`).
+    Le périmètre de visibilité est appliqué dans le service (jamais contournable
+    via un paramètre) : un **client** ne voit que ses tickets
+    (`client_id == current_user.id`), un **technicien** que ceux qui lui sont
+    assignés (`assigned_technician_id == current_user.id`), le **staff**
+    (administrateur / responsable_sav / superuser) voit tout. Le filtre optionnel
+    `status` se compose avec ce périmètre. Pagination `limit`/`offset`.
     """
 
-    return await ticket_service.list_tickets(current_user, limit=limit, offset=offset)
+    return await ticket_service.list_tickets(
+        current_user, limit=limit, offset=offset, status=ticket_status
+    )
 
 
 @router.get(

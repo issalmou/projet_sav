@@ -14,6 +14,7 @@ from app.core.permissions import STAFF_ROLES, get_role_name
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.ticket import TicketAutoCreate, TicketCreate, TicketUpdate
+from app.services.ticket_assignment import pick_technician
 from app.utils.constants import RoleName, TicketStatus
 
 _TICKET_RELATIONSHIPS = (
@@ -68,12 +69,18 @@ class TicketService:
     ) -> Ticket:
         """Création automatique (self-service) : le ticket appartient toujours à `user`.
 
-        Utilisé exclusivement par `DiagnosticService` (tâche 7) — jamais par
+        Utilisé exclusivement par l'agent SAV (outil create_ticket) — jamais par
         la route HTTP publique, réservée au staff depuis la correction RBAC
         de la semaine 6 (voir `create_ticket_for_client`). `TicketAutoCreate`
         ne porte pas de `client_id` : le propriétaire est toujours
         l'utilisateur pour lequel le service agit.
+
+        Le ticket est automatiquement affecté à un technicien actif choisi au
+        hasard (`ticket_assignment.pick_technician`). `None` si aucun technicien
+        actif n'existe.
         """
+
+        technician_id = await pick_technician(self.session)
 
         return await self._persist_new_ticket(
             title=data.title,
@@ -81,6 +88,7 @@ class TicketService:
             product_id=data.product_id,
             client_id=user.id,
             conversation_id=conversation_id,
+            assigned_technician_id=technician_id,
         )
 
     async def create_ticket_for_client(self, staff_user: User, data: TicketCreate) -> Ticket:
@@ -115,6 +123,7 @@ class TicketService:
         product_id: UUID | None,
         client_id: UUID,
         conversation_id: UUID | None,
+        assigned_technician_id: UUID | None = None,
     ) -> Ticket:
         ticket = Ticket(
             title=title,
@@ -122,6 +131,7 @@ class TicketService:
             product_id=product_id,
             client_id=client_id,
             conversation_id=conversation_id,
+            assigned_technician_id=assigned_technician_id,
         )
         self.session.add(ticket)
         await self.session.commit()
@@ -131,7 +141,7 @@ class TicketService:
     async def get_active_ticket_by_conversation(self, conversation_id: UUID) -> Ticket | None:
         """Retourne le ticket actif (statut non terminal) lié à `conversation_id`, s'il existe.
 
-        Usage interne (`DiagnosticService`, tâche 7) pour éviter de créer
+        Usage interne (agent SAV) pour éviter de créer
         plusieurs tickets pour une même conversation tant que le précédent
         n'est pas `closed`. Pas de vérification de permission ici : le seul
         appelant agit toujours pour le propriétaire de la conversation.
@@ -148,14 +158,29 @@ class TicketService:
         )
         return result.scalars().first()
 
-    async def list_tickets(self, user: User, limit: int = 50, offset: int = 0) -> list[Ticket]:
+    async def list_tickets(
+        self,
+        user: User,
+        limit: int = 50,
+        offset: int = 0,
+        status: TicketStatus | str | None = None,
+    ) -> list[Ticket]:
         """Liste les tickets visibles par `user`, selon les règles d'accès validées.
 
-        Pagination simple (`limit`/`offset`), même pattern que `UserService.list_users`.
+        Le périmètre de visibilité (`_scope_to_visible_tickets`) est appliqué ici,
+        dans le service — jamais contournable par un paramètre de requête :
+        - client     -> uniquement ses tickets (`client_id == user.id`) ;
+        - technicien  -> uniquement ceux qui lui sont assignés ;
+        - staff / superuser -> tous.
+        Le filtre optionnel `status` se compose avec ce périmètre. Pagination
+        simple (`limit`/`offset`), même pattern que `UserService.list_users`.
         """
 
         query = select(Ticket).options(*_TICKET_RELATIONSHIPS).order_by(Ticket.created_at.desc())
         query = _scope_to_visible_tickets(query, user)
+
+        if status is not None:
+            query = query.where(Ticket.status == (status.value if isinstance(status, TicketStatus) else status))
 
         result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())

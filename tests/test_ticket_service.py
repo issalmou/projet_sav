@@ -72,22 +72,65 @@ def ticket_service(db_session):
     return TicketService(db_session)
 
 
-async def _create(ticket_service, user, *, title="Panne four", description="Le four ne s'allume plus."):
-    return await ticket_service.create_ticket(user, TicketAutoCreate(title=title, description=description))
+async def _create(
+    ticket_service, user, *, title="Panne four", description="Le four ne s'allume plus.", keep_assignment=False
+):
+    """Crée un ticket via le workflow automatique.
+
+    Depuis l'ajout de l'affectation automatique de technicien, `create_ticket`
+    assigne le ticket à un technicien si le pool en contient un. Les tests de
+    ce fichier portent sur les règles de VISIBILITÉ, pas sur l'affectation :
+    par défaut on remet donc `assigned_technician_id` à NULL après création
+    (les tests d'affectation sont dans `test_ticket_assignment.py`).
+    """
+
+    ticket = await ticket_service.create_ticket(user, TicketAutoCreate(title=title, description=description))
+    if not keep_assignment and ticket.assigned_technician_id is not None:
+        ticket.assigned_technician_id = None
+        ticket_service.session.add(ticket)
+        await ticket_service.session.commit()
+        await ticket_service.session.refresh(ticket, attribute_names=["assigned_technician"])
+    return ticket
 
 
-# --- Création automatique (self-service, DiagnosticService) -------------
+# --- Création automatique (self-service, agent SAV) --------------------
 
 
 @pytest.mark.asyncio
 async def test_create_ticket_owner_is_always_the_requesting_user(ticket_service, ticket_actors):
     # create_ticket (self-service) reste utilisable par n'importe quel rôle :
-    # c'est le chemin qu'emprunte DiagnosticService, jamais affecté par la
+    # c'est le chemin qu'emprunte l'agent SAV, jamais affecté par la
     # restriction de la route publique (cf. create_ticket_for_client).
     for key in ("client_a", "technicien", "responsable", "administrateur"):
         user = ticket_actors[key]
         ticket = await _create(ticket_service, user)
         assert ticket.client_id == user.id
+
+
+@pytest.mark.asyncio
+async def test_auto_created_ticket_is_assigned_to_a_technician(ticket_service, ticket_actors):
+    """Le workflow automatique affecte le ticket à un technicien du pool (algo dédié : test_ticket_assignment)."""
+
+    ticket = await ticket_service.create_ticket(
+        ticket_actors["client_a"], TicketAutoCreate(title="Panne", description="Description.")
+    )
+
+    # Un technicien actif existe (au moins ceux de `ticket_actors`) -> le ticket
+    # est affecté. L'algorithme de sélection est testé en détail dans
+    # test_ticket_assignment.py (isolé des comptes réels de la base de dev).
+    assert ticket.assigned_technician_id is not None
+
+
+@pytest.mark.asyncio
+async def test_manual_staff_ticket_is_not_auto_assigned(ticket_service, ticket_actors):
+    """La création manuelle par le staff n'affecte PAS automatiquement : le staff assigne à la main."""
+
+    ticket = await ticket_service.create_ticket_for_client(
+        ticket_actors["responsable"],
+        TicketCreate(title="Panne", description="Description.", client_id=ticket_actors["client_a"].id),
+    )
+
+    assert ticket.assigned_technician_id is None
 
 
 @pytest.mark.asyncio
@@ -485,8 +528,8 @@ async def test_superuser_with_client_role_can_get_and_update_others_ticket(ticke
 
 
 @pytest_asyncio.fixture
-async def diagnostic_conversation(db_session, ticket_actors):
-    conversation = Conversation(user_id=ticket_actors["client_a"].id, title="Panne four")
+async def diagnostic_conversation(db_session, ticket_actors, product_id):
+    conversation = Conversation(user_id=ticket_actors["client_a"].id, product_id=product_id, title="Panne four")
     db_session.add(conversation)
     await db_session.commit()
     await db_session.refresh(conversation)

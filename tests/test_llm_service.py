@@ -8,7 +8,7 @@ import pytest
 
 from app.ai.exceptions import LLMError, LLMRequestError
 from app.ai.llm import LLMService
-from app.ai.providers.base import LLMProvider, Message
+from app.ai.providers.base import LLMProvider, LLMResult, Message, ToolSpec
 
 
 class FakeProvider(LLMProvider):
@@ -26,6 +26,9 @@ class FakeProvider(LLMProvider):
             raise self.error
 
         return self.reply or ""
+
+    async def agenerate_tools(self, messages: list[Message], tools: list[ToolSpec]) -> LLMResult:
+        return LLMResult(text=await self.agenerate(messages))
 
 
 @pytest.mark.asyncio

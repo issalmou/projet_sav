@@ -5,7 +5,9 @@ dans le registre SQLAlchemy. C'est nécessaire pour que les relations
 déclarées par nom de classe (ex: Mapped["Role"]) puissent être résolues,
 quel que soit le modèle importé en premier par le code appelant.
 """
+from app.models.client_product import ClientProduct
 from app.models.conversation import Conversation
+from app.models.conversation_event import ConversationEvent
 from app.models.document import Document, DocumentProduct
 from app.models.message import Message
 from app.models.product import Product
@@ -13,4 +15,15 @@ from app.models.role import Role
 from app.models.ticket import Ticket
 from app.models.user import User
 
-__all__ = ["Conversation", "Document", "DocumentProduct", "Message", "Product", "Role", "Ticket", "User"]
+__all__ = [
+    "ClientProduct",
+    "Conversation",
+    "ConversationEvent",
+    "Document",
+    "DocumentProduct",
+    "Message",
+    "Product",
+    "Role",
+    "Ticket",
+    "User",
+]

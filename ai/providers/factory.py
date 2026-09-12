@@ -11,6 +11,7 @@ from app.ai.providers.base import LLMProvider
 from app.ai.providers.gemini_provider import GeminiProvider
 from app.ai.providers.llama_provider import LlamaProvider
 from app.ai.providers.mistral_provider import MistralProvider
+from app.ai.providers.ollama_provider import OllamaProvider
 from app.ai.providers.openai_provider import OpenAIProvider
 from app.ai.providers.qwen_provider import QwenProvider
 from app.core.config import settings
@@ -25,6 +26,7 @@ class LLMProviderFactory:
         "mistral": MistralProvider,
         "qwen": QwenProvider,
         "llama": LlamaProvider,
+        "ollama": OllamaProvider,
     }
 
     @classmethod

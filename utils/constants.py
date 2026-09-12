@@ -41,19 +41,6 @@ class DocumentStatus(str, Enum):
     ARCHIVED = "archived"
 
 
-class DiagnosticStatus(str, Enum):
-    """Statut d'une réponse de diagnostic automatique (CDC semaine 5).
-
-    Déterminé par le LLM lui-même via une instruction dédiée
-    (cf. app.ai.prompts.DIAGNOSTIC_STATUS_INSTRUCTION), interprété par
-    DiagnosticService.
-    """
-
-    RESOLVED = "resolved"
-    IN_PROGRESS = "in_progress"
-    ESCALATE = "escalate"
-
-
 class TicketStatus(str, Enum):
     """Cycle de vie d'un ticket de support SAV (CDC semaine 5/6).
 
@@ -68,26 +55,10 @@ class TicketStatus(str, Enum):
     CLOSED = "closed"
 
 
-class TicketConfirmation(str, Enum):
-    """Réponse du client à une proposition explicite de création de ticket.
-
-    Déterminée par le LLM via une instruction dédiée
-    (cf. app.ai.prompts.TICKET_CONFIRMATION_INSTRUCTION), interprétée par
-    DiagnosticService uniquement lorsque Conversation.pending_ticket_confirmation
-    est vrai (c'est-à-dire qu'un ticket a été proposé mais pas encore créé).
-    """
-
-    CONFIRMED = "confirmed"
-    DECLINED = "declined"
-    UNCLEAR = "unclear"
-
-
 __all__ = [
-    "DiagnosticStatus",
     "DocumentCategory",
     "DocumentStatus",
     "DocumentType",
     "RoleName",
-    "TicketConfirmation",
     "TicketStatus",
 ]

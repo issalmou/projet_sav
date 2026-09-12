@@ -162,12 +162,36 @@ async def product(db_session):
     item = Product(reference=f"REF-{uuid.uuid4().hex[:8]}", name="Imprimante Test")
     db_session.add(item)
     await db_session.commit()
+    item_id = item.id  # capturé avant le test : un rollback() (ex. upload annulé) y expirerait `item`
 
     yield item
 
-    still_there = await db_session.get(Product, item.id)
+    still_there = await db_session.get(Product, item_id)
     if still_there is not None:
         await db_session.delete(still_there)
+        await db_session.commit()
+
+
+@pytest_asyncio.fixture
+async def product_id(db_session):
+    """Identifiant (UUID nu) d'un produit de test, à passer au chat / diagnostic.
+
+    Une conversation exige désormais un `product_id` (colonne NOT NULL). Ce
+    fixture renvoie un simple UUID (pas une instance ORM) pour éviter tout
+    problème d'expiration au teardown. Sa suppression purge en cascade les
+    conversations/tickets qui le référencent.
+    """
+
+    item = Product(reference=f"REF-{uuid.uuid4().hex[:8]}", name="Produit test chat")
+    db_session.add(item)
+    await db_session.commit()
+    pid = item.id
+
+    yield pid
+
+    existing = await db_session.get(Product, pid)
+    if existing is not None:
+        await db_session.delete(existing)
         await db_session.commit()
 
 
@@ -186,14 +210,41 @@ class NullRetriever:
 class StubRetriever:
     """Double de RetrieverService qui retourne toujours les mêmes chunks fournis.
 
-    Utilisé pour tester la vérification croisée produit/contexte RAG
-    (DiagnosticService._resolve_product_id) sans dépendre d'un vrai VectorStore :
-    les chunks passés au constructeur doivent mentionner le produit attendu
-    dans leur texte/titre pour que la corroboration réussisse.
+    Enregistre les `product_id` reçus pour permettre aux tests de vérifier le
+    filtrage RAG par produit.
     """
 
     def __init__(self, chunks: list) -> None:
         self._chunks = chunks
+        self.received_product_ids: list = []
 
     async def retrieve(self, question: str, *, product_id=None) -> list:
+        self.received_product_ids.append(product_id)
         return self._chunks
+
+
+class ScriptedLLMProvider:
+    """Fournisseur LLM factice pour tester l'agent LangGraph de façon déterministe.
+
+    `tool_script` : liste de `LLMResult` renvoyés tour à tour par
+    `agenerate_tools` (texte OU appels d'outils). `text_reply` : réponse fixe
+    de `agenerate` (titre de conversation, nœud finalize).
+    """
+
+    def __init__(self, tool_script: list, *, text_reply: str = "Titre") -> None:
+        self._script = list(tool_script)
+        self._text_reply = text_reply
+        self.tool_turns: list[list] = []
+        self.text_turns: list[list] = []
+
+    async def agenerate(self, messages, **kwargs):
+        self.text_turns.append(messages)
+        return self._text_reply
+
+    async def agenerate_tools(self, messages, tools):
+        self.tool_turns.append(messages)
+        if not self._script:
+            from app.ai.providers.base import LLMResult
+
+            return LLMResult(text="Réponse par défaut (script épuisé).")
+        return self._script.pop(0)

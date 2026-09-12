@@ -1,8 +1,12 @@
 """Routes de chat IA.
 
-Toutes les routes sont protégées par JWT (`get_current_user`) et ne portent
-que la responsabilité HTTP : la logique métier vit entièrement dans
-`ChatService`.
+Deux endpoints distincts (séparation création / message) :
+- `POST /chat/conversations` : ouvre une conversation sur un produit ;
+- `POST /chat/message` : envoie un message dans une conversation existante.
+
+Toutes les routes sont protégées par JWT. La logique métier (propriété de la
+conversation, affectation client ↔ produit, agent LangGraph) vit dans
+`ChatService` / `app.ai.agent`.
 """
 from typing import Annotated
 from uuid import UUID
@@ -13,9 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.exceptions import LLMError
 from app.core.dependencies import get_current_user, get_db_session
 from app.models.user import User
-from app.schemas.chat import ChatMessageRequest, ChatMessageResponse, ConversationDetail, ConversationPublic
-from app.services.chat_service import ChatService
-from app.services.diagnostic_service import DiagnosticService
+from app.schemas.chat import (
+    ChatMessageRequest,
+    ChatMessageResponse,
+    ConversationCreateRequest,
+    ConversationDetail,
+    ConversationPublic,
+)
+from app.services.chat_service import ChatService, ProductNotAssignedError
 
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -24,27 +33,37 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def get_chat_service(db: Annotated[AsyncSession, Depends(get_db_session)]) -> ChatService:
     """Fournit un ChatService lié à la session de la requête.
 
-    Utilisé par les routes de gestion des conversations (lecture/suppression),
-    qui n'ont pas besoin de la logique de diagnostic. Dépendance dédiée
-    (plutôt qu'une instanciation directe) pour permettre aux tests d'injecter
-    un ChatService branché sur un fournisseur LLM factice via
-    `app.dependency_overrides`.
+    Dépendance dédiée pour permettre aux tests d'injecter un ChatService
+    branché sur un agent / fournisseur LLM factice via `app.dependency_overrides`.
     """
 
     return ChatService(db)
 
 
-async def get_diagnostic_service(db: Annotated[AsyncSession, Depends(get_db_session)]) -> DiagnosticService:
-    """Fournit un DiagnosticService lié à la session de la requête.
+@router.post(
+    "/conversations",
+    response_model=ConversationPublic,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Un client ne peut ouvrir une conversation que sur un produit qui lui est affecté."},
+        404: {"description": "product_id inconnu."},
+        422: {"description": "Payload invalide (product_id manquant ou mal formé)."},
+    },
+)
+async def create_conversation(
+    payload: ConversationCreateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+) -> ConversationPublic:
+    """Ouvre une conversation SAV dans le contexte d'un produit (obligatoire, immuable ensuite)."""
 
-    Utilisé par `POST /chat/message` : chaque message client passe par le
-    diagnostic (statut RESOLU/EN_COURS/A_ESCALADER, proposition puis
-    confirmation avant création de ticket), sur le même principe que
-    `get_chat_service` — dépendance dédiée pour permettre aux tests
-    d'injecter un DiagnosticService branché sur un fournisseur LLM factice.
-    """
-
-    return DiagnosticService(db)
+    try:
+        return await chat_service.open_conversation(current_user, payload.product_id)
+    except ProductNotAssignedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 @router.post(
@@ -54,27 +73,28 @@ async def get_diagnostic_service(db: Annotated[AsyncSession, Depends(get_db_sess
     responses={
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
         403: {"description": "Ce compte utilisateur a été désactivé."},
-        404: {"description": "conversation_id fourni mais introuvable, ou n'appartenant pas à l'appelant."},
-        422: {"description": "Payload invalide (content vide ou trop long)."},
+        404: {"description": "conversation_id introuvable, ou n'appartenant pas à l'appelant."},
+        422: {"description": "Payload invalide (conversation_id manquant, content vide/trop long)."},
         503: {"description": "Le fournisseur LLM configuré a échoué à générer une réponse."},
     },
 )
 async def send_message(
     payload: ChatMessageRequest,
     current_user: Annotated[User, Depends(get_current_user)],
-    diagnostic_service: Annotated[DiagnosticService, Depends(get_diagnostic_service)],
+    chat_service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> ChatMessageResponse:
-    """Envoie un message à l'agent IA (crée une conversation si `conversation_id` est absent).
+    """Envoie un message dans une conversation existante et retourne la réponse de l'agent.
 
-    Le message passe par le diagnostic automatique (statut RESOLU/EN_COURS/
-    A_ESCALADER). Sur escalade, aucun ticket n'est créé immédiatement : le
-    client est informé et invité à confirmer ; le ticket n'est réellement créé
-    via TicketService qu'après une confirmation explicite sur un tour suivant.
+    `conversation_id` est obligatoire ; la propriété de la conversation est
+    vérifiée dans le service (un client ne peut jamais écrire dans la
+    conversation d'un autre). Le produit utilisé (RAG, ticket) est celui de la
+    conversation. L'agent peut créer un ticket (après confirmation explicite du
+    client) : `ticket_id` est alors renseigné.
     """
 
     try:
-        result = await diagnostic_service.diagnose(
-            current_user, payload.content, conversation_id=payload.conversation_id
+        result = await chat_service.handle_message(
+            current_user, payload.conversation_id, payload.content
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -84,7 +104,7 @@ async def send_message(
     return ChatMessageResponse(
         conversation_id=result.conversation.id,
         message=result.message,
-        ticket_id=result.ticket.id if result.ticket is not None else None,
+        ticket_id=result.ticket_id,
     )
 
 
@@ -131,7 +151,9 @@ async def get_conversation(
 
     return ConversationDetail(
         id=conversation.id,
+        product_id=conversation.product_id,
         title=conversation.title,
+        pending_ticket_confirmation=conversation.pending_ticket_confirmation,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         messages=messages,

@@ -69,35 +69,6 @@ async def test_get_unknown_product_raises_value_error(product_service):
 
 
 @pytest.mark.asyncio
-async def test_get_product_by_name_returns_existing_case_insensitive(product_service, created_product):
-    fetched = await product_service.get_product_by_name(created_product.name.upper())
-
-    assert fetched is not None
-    assert fetched.id == created_product.id
-
-
-@pytest.mark.asyncio
-async def test_get_product_by_name_returns_none_when_not_found(product_service):
-    fetched = await product_service.get_product_by_name("Produit totalement inconnu XYZ")
-
-    assert fetched is None
-
-
-@pytest.mark.asyncio
-async def test_get_product_by_name_returns_none_when_ambiguous(product_service, created_product):
-    """Deux produits partageant le même nom : jamais de correspondance tranchée au hasard."""
-
-    duplicate = await product_service.create_product(_payload(name=created_product.name))
-
-    fetched = await product_service.get_product_by_name(created_product.name)
-
-    assert fetched is None
-
-    await product_service.session.delete(duplicate)
-    await product_service.session.commit()
-
-
-@pytest.mark.asyncio
 async def test_update_product_modifies_fields(product_service, created_product):
     updated = await product_service.update_product(
         created_product.id, ProductUpdate(name="Nouveau nom", warranty_months=24)

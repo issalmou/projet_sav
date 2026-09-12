@@ -70,7 +70,7 @@ async def test_superuser_sees_documents_from_every_creator(db_session, sav_user)
 
 
 @pytest.mark.asyncio
-async def test_list_documents_via_api_is_scoped_to_creator(client, db_session, actors, role_ids):
+async def test_list_documents_via_api_is_scoped_to_creator(client, db_session, actors, role_ids, product):
     _, responsable_token = actors["responsable"]
     other_responsable, other_token = await create_and_login(client, db_session, role_id=role_ids["responsable_sav"])
 
@@ -78,13 +78,13 @@ async def test_list_documents_via_api_is_scoped_to_creator(client, db_session, a
         "/api/v1/documents/upload",
         headers=_auth_headers(responsable_token),
         files={"file": ("guide.txt", b"Contenu.", "text/plain")},
-        data={"title": "A moi via API", "category": "faq"},
+        data={"title": "A moi via API", "category": "faq", "product_ids": [str(product.id)]},
     )
     other_upload = await client.post(
         "/api/v1/documents/upload",
         headers=_auth_headers(other_token),
         files={"file": ("guide.txt", b"Contenu.", "text/plain")},
-        data={"title": "Pas a moi via API", "category": "faq"},
+        data={"title": "Pas a moi via API", "category": "faq", "product_ids": [str(product.id)]},
     )
 
     response = await client.get("/api/v1/documents/", headers=_auth_headers(responsable_token))

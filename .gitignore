@@ -25,6 +25,10 @@ __pycache__
 # Uploads (si les fichiers sont générés)
 uploads/
 
+# Base vectorielle ChromaDB générée localement (RAG) — jamais versionnée,
+# recréée à l'indexation des documents (audit, point 3).
+chroma_db/
+
 # Variables d'environnement
 .env.*
 !.env.example

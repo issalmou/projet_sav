@@ -69,7 +69,7 @@ async def _cleanup_document(db_session, document_id: uuid.UUID) -> None:
 
 
 @pytest.mark.asyncio
-async def test_responsable_sav_can_upload_txt_document(client, db_session, actors, tmp_path):
+async def test_responsable_sav_can_upload_txt_document(client, db_session, actors, product, tmp_path):
     _, responsable_token = actors["responsable"]
 
     app.dependency_overrides[get_document_service] = _override_document_service(tmp_path)
@@ -78,7 +78,7 @@ async def test_responsable_sav_can_upload_txt_document(client, db_session, actor
             "/api/v1/documents/upload",
             headers=_auth_headers(responsable_token),
             files={"file": ("guide.txt", "Verifiez le capteur papier.".encode(), "text/plain")},
-            data={"title": "Guide erreur E17", "category": "faq", "version": "1.0"},
+            data={"title": "Guide erreur E17", "category": "faq", "version": "1.0", "product_ids": [str(product.id)]},
         )
     finally:
         app.dependency_overrides.pop(get_document_service, None)
@@ -89,7 +89,7 @@ async def test_responsable_sav_can_upload_txt_document(client, db_session, actor
     assert body["file_type"] == "txt"
     assert body["category"] == "faq"
     assert body["status"] == "draft"
-    assert body["products"] == []
+    assert [p["id"] for p in body["products"]] == [str(product.id)]
     assert body["created_by"]["id"] == str(actors["responsable"][0].id)
     assert Path(settings.UPLOAD_DIR).exists()
 
@@ -123,7 +123,7 @@ async def test_upload_links_provided_products(client, db_session, actors, produc
 
 
 @pytest.mark.asyncio
-async def test_upload_returns_500_and_leaves_no_trace_when_indexing_fails(client, db_session, actors, tmp_path):
+async def test_upload_returns_500_and_leaves_no_trace_when_indexing_fails(client, db_session, actors, product, tmp_path):
     """Scénario bout-en-bout (Tâche 2) : échec d'indexation -> 500, aucun document, aucun fichier orphelin."""
 
     _, responsable_token = actors["responsable"]
@@ -136,7 +136,7 @@ async def test_upload_returns_500_and_leaves_no_trace_when_indexing_fails(client
             "/api/v1/documents/upload",
             headers=_auth_headers(responsable_token),
             files={"file": ("guide.txt", b"Contenu valide pour extraction et chunking.", "text/plain")},
-            data={"title": "Titre indexation KO HTTP", "category": "faq", "version": "1.0"},
+            data={"title": "Titre indexation KO HTTP", "category": "faq", "version": "1.0", "product_ids": [str(product.id)]},
         )
     finally:
         app.dependency_overrides.pop(get_document_service, None)
@@ -155,17 +155,33 @@ async def test_upload_returns_500_and_leaves_no_trace_when_indexing_fails(client
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_unsupported_file_type(client, actors):
+async def test_upload_rejects_unsupported_file_type(client, actors, product):
     _, responsable_token = actors["responsable"]
 
     response = await client.post(
         "/api/v1/documents/upload",
         headers=_auth_headers(responsable_token),
         files={"file": ("malware.exe", b"MZ", "application/octet-stream")},
-        data={"title": "Fichier interdit", "category": "faq"},
+        data={"title": "Fichier interdit", "category": "faq", "product_ids": [str(product.id)]},
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_upload_without_product_ids_is_422(client, actors):
+    """Chaque document doit être rattaché à au moins un produit existant."""
+
+    _, responsable_token = actors["responsable"]
+
+    response = await client.post(
+        "/api/v1/documents/upload",
+        headers=_auth_headers(responsable_token),
+        files={"file": ("notice.txt", b"Contenu.", "text/plain")},
+        data={"title": "Sans produit", "category": "manuals"},
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -183,7 +199,7 @@ async def test_upload_rejects_unknown_product_id(client, actors):
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_file_too_large(client, actors, monkeypatch):
+async def test_upload_rejects_file_too_large(client, actors, product, monkeypatch):
     monkeypatch.setattr(settings, "MAX_UPLOAD_SIZE_MB", 0)
     _, responsable_token = actors["responsable"]
 
@@ -191,21 +207,21 @@ async def test_upload_rejects_file_too_large(client, actors, monkeypatch):
         "/api/v1/documents/upload",
         headers=_auth_headers(responsable_token),
         files={"file": ("guide.txt", b"un octet suffit", "text/plain")},
-        data={"title": "Trop volumineux", "category": "faq"},
+        data={"title": "Trop volumineux", "category": "faq", "product_ids": [str(product.id)]},
     )
 
     assert response.status_code == 413
 
 
 @pytest.mark.asyncio
-async def test_client_cannot_upload_document(client, actors):
+async def test_client_cannot_upload_document(client, actors, product):
     _, client_token = actors["client"]
 
     response = await client.post(
         "/api/v1/documents/upload",
         headers=_auth_headers(client_token),
         files={"file": ("guide.txt", b"contenu", "text/plain")},
-        data={"title": "Guide", "category": "faq"},
+        data={"title": "Guide", "category": "faq", "product_ids": [str(product.id)]},
     )
 
     assert response.status_code == 403

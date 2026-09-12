@@ -12,6 +12,7 @@ from app.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.document import Document
+    from app.models.user import User
 
 
 class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -27,6 +28,12 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     warranty_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     documents: Mapped[list["Document"]] = relationship(secondary="document_products", back_populates="products")
+
+    # Clients (User de rôle « client ») auxquels ce produit est rattaché, via
+    # la table d'association client_products. Rattachement géré par le staff.
+    clients: Mapped[list["User"]] = relationship(
+        secondary="client_products", back_populates="assigned_products"
+    )
 
     def __repr__(self) -> str:
         return f"<Product id={self.id} reference={self.reference}>"

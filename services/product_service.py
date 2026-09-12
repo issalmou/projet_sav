@@ -1,7 +1,7 @@
 """Services liés aux produits (CDC semaine 6 : API Produits)."""
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.product import Product
@@ -37,20 +37,6 @@ class ProductService:
 
         result = await self.session.execute(select(Product).where(Product.reference == reference))
         return result.scalar_one_or_none()
-
-    async def get_product_by_name(self, name: str) -> Product | None:
-        """Retourne un produit par nom (correspondance exacte, insensible à la casse).
-
-        Utilisé par DiagnosticService pour résoudre un produit identifié par le
-        LLM (RAG) sans jamais deviner : retourne `None` si aucun produit ne
-        correspond, ou si plusieurs produits partagent le même nom (`name`
-        n'est pas contraint à l'unicité, contrairement à `reference`) — mieux
-        vaut ne pas trancher que de risquer une correspondance incorrecte.
-        """
-
-        result = await self.session.execute(select(Product).where(func.lower(Product.name) == name.strip().lower()))
-        matches = list(result.scalars().all())
-        return matches[0] if len(matches) == 1 else None
 
     async def create_product(self, data: ProductCreate) -> Product:
         """Crée un produit. Lève `ValueError` si la référence existe déjà (même principe que UserService.create_user)."""

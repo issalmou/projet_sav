@@ -6,12 +6,12 @@ Backend FastAPI de la plateforme IA SAV & Support Technique : authentification J
 
 ## Architecture
 
-- `api/` — routes FastAPI (`auth`, `users`, `chat`, `documents`, `products`, `tickets`, `warranties`)
+- `api/` — routes FastAPI (`auth`, `users`, `roles`, `chat`, `clients`, `documents`, `products`, `tickets`, `warranties`)
 - `core/` — configuration (`config.py`), sécurité JWT/bcrypt (`security.py`), RBAC (`permissions.py`), dépendances FastAPI partagées (`dependencies.py`), journalisation (`logger.py`)
-- `models/` — modèles SQLAlchemy 2 (`User`, `Role`, `Product`, `Ticket`, `Conversation`, `Message`, `Document`)
+- `models/` — modèles SQLAlchemy 2 (`User`, `Role`, `Product`, `ClientProduct`, `Ticket`, `Conversation`, `Message`, `Document`, `DocumentProduct`)
 - `schemas/` — schémas Pydantic (entrée/sortie de l'API)
 - `services/` — logique métier (un service par ressource)
-- `ai/` — module IA : `providers/` (LLM multi-fournisseur), `embeddings/` (embeddings multi-fournisseur), `rag/` (extraction, chunking, ChromaDB, recherche sémantique)
+- `ai/` — module IA : `providers/` (LLM multi-fournisseur + tool-calling natif), `embeddings/` (embeddings multi-fournisseur), `rag/` (extraction, chunking, ChromaDB, recherche sémantique), `agent/` (agent SAV LangGraph : graphe ReAct, outils métier sécurisés, contexte)
 - `database/` — moteur SQLAlchemy asynchrone, session, script de seed
 - `alembic/` — migrations de schéma
 - `tests/` — suite `pytest`
@@ -58,8 +58,12 @@ DB_MAX_OVERFLOW=...
 DB_POOL_TIMEOUT=...
 DB_ECHO=...
 
-# LLM (fournisseur actif : gemini | openai | mistral | qwen | llama)
+# LLM (fournisseur actif : gemini | openai | mistral | qwen | llama | ollama)
 LLM_PROVIDER=...
+# Agent LangGraph : nb max de tours (garde-fou anti-boucle)
+AGENT_MAX_ITERATIONS=...
+# Escalade automatique : nb de tentatives de diagnostic infructueuses avant ticket auto (défaut 2)
+AGENT_ESCALATION_MAX_FAILED_ATTEMPTS=...
 LLM_REQUEST_TIMEOUT_SECONDS=...
 GEMINI_API_KEY=...
 GEMINI_MODEL=...
@@ -73,6 +77,14 @@ QWEN_BASE_URL=...
 LLAMA_API_KEY=...
 LLAMA_MODEL=...
 LLAMA_BASE_URL=...
+# Ollama (LLM local) — modèle instruct supportant le tool-calling (qwen2.5:3b
+# retenu après comparaison réelle avec qwen2.5:7b sur ce projet : plus fiable
+# pour enchaîner correctement les appels d'outils requis par l'agent, cf.
+# core/config.py)
+OLLAMA_BASE_URL=...
+OLLAMA_MODEL=...
+OLLAMA_API_KEY=...
+OLLAMA_NUM_CTX=...
 
 # Embeddings (fournisseur independant de LLM_PROVIDER : gemini | openai | mistral | qwen | llama | e5)
 EMBEDDING_PROVIDER=...
@@ -144,6 +156,54 @@ Une fois l'API lancée :
 - Swagger UI : `/docs`
 - ReDoc : `/redoc`
 - Schéma OpenAPI brut : `/openapi.json`
+
+## Contrats métier (Client / Produit / Conversation / Ticket / Agent)
+
+### Client ↔ Produit (avec quantité)
+
+Un « client » est un `User` de rôle `client` (aucune entité `Client`). `client_products` associe des produits **existants** à un client, avec une quantité (`qte >= 1`, contrainte CHECK). Gestion réservée à `administrateur` / `responsable_sav` / superuser :
+
+- `GET  /api/v1/clients/{client_id}/products` — le client lui-même ou le staff ; renvoie chaque produit **avec sa `qte`** ;
+- `POST /api/v1/clients/{client_id}/products` — staff uniquement.
+  Corps : `{"items": [{"product_id": "...", "qte": 3}, ...]}` (`qte` optionnel, défaut 1).
+  Doublons de `product_id` fusionnés ; produit déjà affecté → **quantité mise à jour** (upsert) ; transaction unique ;
+- `DELETE /api/v1/clients/{client_id}/products/{product_id}` — staff uniquement (retire l'affectation).
+
+### Conversation ↔ Produit — création séparée de l'envoi de message
+
+- `POST /api/v1/chat/conversations` `{"product_id": "..."}` → **201**, crée la conversation.
+  `conversations.product_id` est **obligatoire** (colonne NOT NULL). Un `client` ne peut ouvrir une conversation que sur un produit qui lui est **affecté** (`client_products`) → `403` sinon ; produit inconnu → `404`.
+- `POST /api/v1/chat/message` `{"conversation_id": "...", "content": "..."}` → **200**.
+  `conversation_id` est **obligatoire** — plus aucune création implicite de conversation. La **propriété** de la conversation est vérifiée dans le service : un client ne peut jamais écrire dans la conversation d'un autre (`404`, jamais `200`). Aucun `product_id` accepté ici.
+- Le produit d'une conversation est **immuable** et sert de **source de vérité** (RAG, agent, ticket).
+
+### Agent SAV — LangGraph uniquement
+
+Le seul moteur d'orchestration de l'IA est l'agent LangGraph (`app/ai/agent/`) — l'ancien moteur « legacy » (marqueurs texte `[STATUT:]` / `[PRODUIT:]` + regex) a été **entièrement supprimé** (plus de `AGENT_ENGINE`, plus de `DiagnosticService`).
+
+- Graphe : boucle ReAct `agent → (outils ?) → tools → agent`, garde-fou anti-boucle (`AGENT_MAX_ITERATIONS`, défaut 6) → nœud `finalize`. Le nœud `finalize` neutralise les `tool_calls` restés sans réponse avant de rappeler le LLM (séquence valide pour toutes les API chat/completions).
+- Tool-calling **natif multi-fournisseur** : `LLMProvider.agenerate_tools` implémenté pour Gemini (`google-genai` function calling) et les API compatibles OpenAI (OpenAI / Qwen / Llama / Ollama / Mistral). Le graphe appelle `LLMService` injecté — **aucun couplage à un fournisseur**. Les spécificités Ollama (pas de `tool_choice`, `num_ctx` dans la requête, ids de tool calls régénérés) sont confinées à `OllamaProvider`.
+- Outils (fonctions métier sécurisées, `app/ai/agent/tools.py`) : `search_docs`, `get_warranty`, `check_ticket_status`, `submit_diagnosis`, `record_client_feedback`, `request_ticket_creation`, `create_ticket`, `escalate_to_technician`.
+- **Sécurité déterministe** (jamais déléguée au LLM) : le produit / le client / la conversation viennent de `AgentContext` (conversation authentifiée) ; les outils n'acceptent que du texte libre / des booléens d'interprétation ; les **compteurs de diagnostic** (`Conversation.diagnostic_attempts`, seuil d'escalade) sont gérés et lus par le backend ; `submit_diagnosis` exige `search_performed` (pas de diagnostic sans documentation) ; `create_ticket` n'est possible qu'après un `request_ticket_creation` fait à un tour **antérieur** (`ticket_proposed_this_run` False) et tant que `pending_ticket_confirmation` est vrai (B2) ; `escalate_to_technician` n'est possible qu'à partir de `diagnostic_attempts >= AGENT_ESCALATION_MAX_FAILED_ATTEMPTS` (CDC §17) ; pas de doublon de ticket actif, et aucun `ticket_id` renvoyé si rien n'a été créé dans le tour (B3).
+
+### Workflow de résolution interactive (CDC §14 / §17)
+
+`compréhension → search_docs → hypothèse + submit_diagnosis(cause, étapes numérotées) → question au client → record_client_feedback(resolved) → si non résolu : nouvelle recherche / nouvelle hypothèse → à N échecs : escalate_to_technician`.
+
+- L'état du diagnostic est persisté sur `Conversation` (`diagnostic_attempts`, `search_performed`, `awaiting_step_feedback`, `problem_resolved`) et le déroulé dans la table **`conversation_events`** (append-only : `search` / `diagnosis` / `feedback` / `escalation` / `ticket`). L'état LangGraph étant volatil, un **récapitulatif** de ces événements est réinjecté dans le prompt à chaque tour (`build_diagnostic_recap`).
+- **Deux chemins d'escalade** : *demande explicite* du client (`request_ticket_creation` → confirmation au tour suivant → `create_ticket`) et *échec du diagnostic* (`escalate_to_technician`, sans confirmation, gate backend sur le seuil).
+
+### Ticket automatique
+
+`client_id = conversation.user_id`, `product_id = conversation.product_id` (jamais déduit du texte ni du LLM), `conversation_id = conversation.id`, `assigned_technician_id` = **technicien actif choisi au hasard** (`ORDER BY random()`) — `null` si aucun. La **description** est générée automatiquement (`app/ai/agent/ticket_summary.py`) à partir de la conversation et du journal de diagnostic — rubriques *Problème / Symptômes / Diagnostic / Étapes proposées / Résultats des tentatives / Documentation consultée / Conclusion / Raison de l'escalade* — avec **repli déterministe** si le LLM échoue (la description n'est jamais vide). Le **titre** suit la même logique (ligne `TITRE:` du LLM, sinon `conversation.title` non générique, sinon 1er message client).
+
+### `GET /api/v1/tickets`
+
+Périmètre appliqué **dans le service** : `client` → ses tickets (`client_id`) ; `technicien` → ses tickets assignés (`assigned_technician_id`) ; staff / superuser → tous. Non contournable par un paramètre. Filtre optionnel `?status=open|in_progress|resolved|closed`.
+
+### Upload de document
+
+`product_ids` **obligatoire** (au moins un produit existant) — permet le filtrage RAG par produit.
 
 ## Accélération GPU pour les embeddings locaux (E5)
 

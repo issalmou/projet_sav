@@ -1,17 +1,13 @@
-"""Script de démonstration du Diagnostic automatique (Semaine 8).
+"""Script de démonstration de l'agent SAV (LangGraph).
 
-`DiagnosticService` n'a jamais eu de route API dédiée (décision actée dès la
-Semaine 5 : aucune route publique n'existe pour l'appeler) — ce script
-l'exerce directement, comme le fait déjà `tests/test_diagnostic_integration.py`.
-Rien n'est inventé ici : c'est le même service, appelé de la même façon.
+Parcours complet : client -> produit affecté -> conversation -> messages ->
+agent (RAG + outils) -> proposition de ticket -> confirmation -> création.
 
 Deux modes :
-- `--live` (par défaut) : utilise le vrai fournisseur LLM configuré (.env,
-  LLM_PROVIDER) et le vrai RAG (ChromaDB réel). Résultat non scripté : le
-  LLM décide lui-même RESOLU / EN_COURS / A_ESCALADER.
-- `--deterministic` : rejoue une séquence de réponses fixes (même principe
-  que tests/test_diagnostic_integration.py::test_full_workflow...), pour une
-  démonstration reproductible garantie (ex: présentation critique/enregistrée).
+- `--live` (défaut) : vrai fournisseur LLM (.env, LLM_PROVIDER) + vrai RAG.
+  L'agent décide lui-même quels outils appeler.
+- `--deterministic` : fournisseur scripté (appels d'outils fixes), pour une
+  démonstration reproductible.
 
 Usage (depuis `backend/`) :
     PYTHONPATH=. python demo/demo_diagnostic.py --live
@@ -22,77 +18,107 @@ import asyncio
 import uuid
 
 from app.ai.llm import LLMService
-from app.ai.providers.base import LLMProvider, Message as LLMMessage
+from app.ai.providers.base import LLMProvider, LLMResult, ToolCall
 from app.database.session import AsyncSessionLocal
+from app.models.product import Product
+from app.schemas.client_product import ClientProductItem
 from app.schemas.user import UserCreate
-from app.services.diagnostic_service import DiagnosticService
-from app.services.ticket_service import TicketService
+from app.services.chat_service import ChatService
+from app.services.client_product_service import ClientProductService
 from app.services.user_service import UserService
+from app.utils.constants import RoleName
 
 
-class _ScriptedProvider(LLMProvider):
-    """Rejoue une réponse différente à chaque appel (mode --deterministic)."""
+class _ScriptedAgentProvider(LLMProvider):
+    """Rejoue une séquence d'`LLMResult` (mode --deterministic)."""
 
-    def __init__(self, replies: list[str]) -> None:
-        self._replies = list(replies)
+    def __init__(self, script: list[LLMResult]) -> None:
+        self._script = list(script)
 
-    async def agenerate(self, messages: list[LLMMessage], **kwargs: object) -> str:
-        return self._replies.pop(0)
+    async def agenerate(self, messages, **kwargs) -> str:
+        return "Pompe à chaleur : code erreur"
 
-
-# Ordre réel des appels LLM par tour (ChatService génère aussi un titre de
-# conversation) : titre(Q1) -> diagnostic(Q1) -> titre affiné(Q1+Q2) -> diagnostic(Q2).
-_DETERMINISTIC_REPLIES = [
-    "Pompe à chaleur : code erreur",
-    "Avez-vous vérifié le disjoncteur dédié et le niveau du fluide caloporteur ?\n[STATUT: EN_COURS]",
-    "Pompe à chaleur : panne persistante",
-    "Je ne trouve pas de solution dans la documentation disponible ; je transmets votre dossier à un technicien.\n[STATUT: A_ESCALADER]",
-]
+    async def agenerate_tools(self, messages, tools) -> LLMResult:
+        return self._script.pop(0) if self._script else LLMResult(text="(fin de script)")
 
 
-async def _get_or_create_demo_client(session) -> "User":  # noqa: F821 (type hint informatif)
-    service = UserService(session)
-    email = "demo.client@example.com"
-    existing = await service.get_user_by_email(email)
-    if existing is not None:
-        return existing
-    return await service.create_user(UserCreate(email=email, password="DemoPass1"))
+def _turn_1_script() -> list[LLMResult]:
+    return [
+        LLMResult(tool_calls=(ToolCall("c1", "search_docs", {"query": "pompe à chaleur code erreur"}),)),
+        LLMResult(text="Vérifiez le disjoncteur dédié et le niveau de fluide caloporteur, puis redémarrez."),
+    ]
+
+
+def _turn_2_script() -> list[LLMResult]:
+    return [
+        LLMResult(tool_calls=(ToolCall("c2", "request_ticket_creation", {"problem_summary": "pompe à chaleur : panne persistante après vérifications"}),)),
+        LLMResult(text="Je n'ai pas pu résoudre le problème. Souhaitez-vous que je crée un ticket de support ? (oui / non)"),
+    ]
+
+
+def _turn_3_script() -> list[LLMResult]:
+    return [
+        LLMResult(tool_calls=(ToolCall("c3", "create_ticket", {"description": "Pompe à chaleur en panne, code erreur ; disjoncteur et fluide vérifiés ; non résolu, intervention technique nécessaire."}),)),
+        LLMResult(text="Votre ticket a été créé et transmis à un technicien. Vous serez recontacté."),
+    ]
+
+
+async def _setup(session):
+    us = UserService(session)
+    client = await us.get_user_by_email("demo.client@example.com")
+    if client is None:
+        from app.services.role_service import RoleService
+
+        role = await RoleService(session).get_role_by_name(RoleName.CLIENT.value)
+        client = await us.create_user(
+            UserCreate(email="demo.client@example.com", password="DemoPass1", role_id=role.id if role else None)
+        )
+
+    result = await session.execute(Product.__table__.select().limit(1))
+    row = result.first()
+    if row is None:
+        product = Product(reference=f"DEMO-{uuid.uuid4().hex[:6]}", name="Pompe à chaleur Demo", warranty_months=24)
+        session.add(product)
+        await session.commit()
+        await session.refresh(product)
+    else:
+        product = await session.get(Product, row[0])
+
+    await ClientProductService(session).assign_products(
+        client.id, [ClientProductItem(product_id=product.id, qte=1)]
+    )
+    return client, product
 
 
 async def run(live: bool) -> None:
     async with AsyncSessionLocal() as session:
-        client = await _get_or_create_demo_client(session)
+        client, product = await _setup(session)
+        print(f"Mode {'LIVE' if live else 'DETERMINISTIC'} | produit : {product.name} ({product.reference})")
 
-        llm_service = None if live else LLMService(provider=_ScriptedProvider(list(_DETERMINISTIC_REPLIES)))
-        service = DiagnosticService(session, llm_service=llm_service)
+        def svc(script):
+            llm = None if live else LLMService(provider=_ScriptedAgentProvider(script))
+            return ChatService(session, llm_service=llm)
 
-        print(f"[1/2] Mode {'LIVE (vrai LLM)' if live else 'DETERMINISTIC (scripté)'}")
-        print("Client :", "Ma pompe à chaleur affiche un code erreur et ne redémarre plus.")
-        first = await service.diagnose(client, "Ma pompe à chaleur affiche un code erreur et ne redémarre plus.")
-        print("Agent  :", first.message.content)
-        print("Statut :", first.status.value)
+        conversation = await svc([]).open_conversation(client, product.id)
+        print(f"Conversation ouverte : {conversation.id}\n")
 
-        if first.status.value == "resolved":
-            print("\n-> Résolu dès le premier échange, rien à escalader. Fin de la démonstration.")
-            return
-
-        print("\n[2/2] Client :", "J'ai vérifié, le problème persiste toujours.")
-        second = await service.diagnose(
-            client, "J'ai vérifié, le problème persiste toujours.", conversation_id=first.conversation.id
-        )
-        print("Agent  :", second.message.content)
-        print("Statut :", second.status.value)
-
-        if second.ticket is not None:
-            persisted = await TicketService(session).get_ticket(second.ticket.id, client)
-            print(f"\n-> Ticket créé : id={persisted.id} statut={persisted.status} titre='{persisted.title}'")
-            print("   Consultable ensuite via l'API : GET /api/v1/tickets/{id} (en tant que staff).")
-        else:
-            print("\n-> Toujours en cours, aucune escalade sur ce tour (relancez le script pour continuer).")
+        msgs = [
+            ("Ma pompe à chaleur affiche un code erreur et ne redémarre plus.", _turn_1_script()),
+            ("J'ai vérifié le disjoncteur et le fluide, le problème persiste.", _turn_2_script()),
+            ("Oui, créez un ticket s'il vous plaît.", _turn_3_script()),
+        ]
+        for text, script in msgs:
+            print("Client :", text)
+            result = await svc(script).handle_message(client, conversation.id, text)
+            print("Agent  :", result.message.content)
+            if result.ticket_id:
+                print(f"\n-> Ticket créé : {result.ticket_id}")
+                break
+            print()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--deterministic", action="store_true", help="Séquence de réponses fixes, reproductible.")
+    parser.add_argument("--deterministic", action="store_true", help="Appels d'outils scriptés, reproductible.")
     args = parser.parse_args()
     asyncio.run(run(live=not args.deterministic))

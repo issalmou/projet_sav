@@ -1,11 +1,12 @@
 """Modèles Document et DocumentProduct.
 
 Un document appartient à la base de connaissances gérée par le Responsable
-SAV.
-Le lien avec les produits est plusieurs-à-plusieurs et optionnel : un
-document peut être général (aucun produit associé), lié à un seul produit,
-ou concerner plusieurs produits. L'absence
-de toute ligne DocumentProduct pour un document signifie qu'il est général.
+SAV. Le lien avec les produits est plusieurs-à-plusieurs : chaque document
+ajouté doit être rattaché à AU MOINS un produit existant (contrainte
+appliquée à l'upload par `DocumentUploadMetadata.product_ids`), afin que le
+RAG puisse filtrer la recherche documentaire par produit. La colonne
+`is_general` du VectorStore (chunk sans produit) reste supportée pour
+compatibilité mais n'est plus produite par le flux d'upload.
 """
 import uuid
 from datetime import datetime

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
+from app.api.clients import router as clients_router
 from app.api.documents import router as documents_router
 from app.api.products import router as products_router
 from app.api.roles import router as roles_router
@@ -38,6 +39,13 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,
+    # Durcissement production (point 3 de l'audit) : /docs, /redoc et le
+    # schéma OpenAPI brut restent actifs en développement/test (défaut
+    # APP_ENV=development), mais sont désactivés dès APP_ENV=production —
+    # ne pas exposer la documentation interactive de l'API publiquement.
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.add_middleware(
@@ -54,6 +62,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(chat_router, prefix=settings.API_V1_PREFIX)
+app.include_router(clients_router, prefix=settings.API_V1_PREFIX)
 app.include_router(documents_router, prefix=settings.API_V1_PREFIX)
 app.include_router(products_router, prefix=settings.API_V1_PREFIX)
 app.include_router(roles_router, prefix=settings.API_V1_PREFIX)

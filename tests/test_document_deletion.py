@@ -112,14 +112,14 @@ async def test_superuser_can_delete_document_created_by_someone_else(db_session,
 
 
 @pytest.mark.asyncio
-async def test_delete_document_via_api_returns_204(client, db_session, actors, tmp_path):
+async def test_delete_document_via_api_returns_204(client, db_session, actors, tmp_path, product):
     _, responsable_token = actors["responsable"]
 
     upload = await client.post(
         "/api/v1/documents/upload",
         headers=_auth_headers(responsable_token),
         files={"file": ("guide.txt", b"Contenu.", "text/plain")},
-        data={"title": "A supprimer via API", "category": "faq"},
+        data={"title": "A supprimer via API", "category": "faq", "product_ids": [str(product.id)]},
     )
     document_id = upload.json()["id"]
     file_path = Path((await db_session.get(Document, uuid.UUID(document_id))).file_path)
@@ -134,7 +134,7 @@ async def test_delete_document_via_api_returns_204(client, db_session, actors, t
 
 
 @pytest.mark.asyncio
-async def test_delete_document_via_api_forbidden_for_non_creator(client, db_session, actors, role_ids, tmp_path):
+async def test_delete_document_via_api_forbidden_for_non_creator(client, db_session, actors, role_ids, tmp_path, product):
     _, responsable_token = actors["responsable"]
     other_responsable, other_responsable_token = await create_and_login(
         client, db_session, role_id=role_ids["responsable_sav"]
@@ -144,7 +144,7 @@ async def test_delete_document_via_api_forbidden_for_non_creator(client, db_sess
         "/api/v1/documents/upload",
         headers=_auth_headers(responsable_token),
         files={"file": ("guide.txt", b"Contenu.", "text/plain")},
-        data={"title": "Pas a toi", "category": "faq"},
+        data={"title": "Pas a toi", "category": "faq", "product_ids": [str(product.id)]},
     )
     document_id = upload.json()["id"]
 

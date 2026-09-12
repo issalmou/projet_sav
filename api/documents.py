@@ -52,7 +52,7 @@ async def documents_status() -> dict[str, str]:
         403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
         404: {"description": "Un des product_ids fournis est introuvable."},
         413: {"description": "Fichier dépassant la taille maximale autorisée."},
-        422: {"description": "Métadonnées invalides (title, category ou version)."},
+        422: {"description": "Métadonnées invalides (title, category, version, ou product_ids vide/absent)."},
         500: {"description": "L'indexation RAG a échoué : l'upload est intégralement annulé."},
     },
 )
@@ -67,6 +67,8 @@ async def upload_document(
 ) -> DocumentRead:
     """Dépose un document dans la base de connaissances (réservé au Responsable SAV).
 
+    `product_ids` est obligatoire (au moins un produit existant) : le document
+    est rattaché à ces produits pour permettre le filtrage RAG par produit.
     L'indexation RAG est obligatoire : en cas d'échec, l'upload entier est
     annulé (aucun document ni fichier orphelin conservé) et l'API renvoie 500.
     """

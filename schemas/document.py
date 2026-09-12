@@ -10,15 +10,18 @@ from app.utils.constants import DocumentCategory, DocumentStatus, DocumentType
 
 
 class DocumentUploadMetadata(BaseModel):
-    """Métadonnées envoyées aux côtés du fichier lors de l'upload (tâche 3).
+    """Métadonnées envoyées aux côtés du fichier lors de l'upload.
 
-    `product_ids` vide (par défaut) = document général, sans produit associé.
+    `product_ids` est OBLIGATOIRE (au moins un produit) : chaque document de la
+    base de connaissances est rattaché à un ou plusieurs produits existants,
+    ce qui permet au RAG de filtrer la recherche documentaire par produit
+    (`VectorStore.query(product_id=...)`).
     """
 
     title: str = Field(min_length=1, max_length=200)
     category: DocumentCategory
     version: str = Field(default="1.0", max_length=30)
-    product_ids: list[UUID] = Field(default_factory=list)
+    product_ids: list[UUID] = Field(min_length=1)
 
 
 class DocumentRead(BaseModel):

@@ -183,7 +183,7 @@ async def test_index_pending_documents_processes_only_unindexed_ones(db_session,
 
 
 @pytest.mark.asyncio
-async def test_upload_document_indexes_successfully_and_stays_available_for_rag(db_session, sav_user, tmp_path):
+async def test_upload_document_indexes_successfully_and_stays_available_for_rag(db_session, sav_user, product, tmp_path):
     vector_store = VectorStore(persist_directory=tmp_path / "chroma")
     service = DocumentService(
         db_session, embedder=EmbeddingService(provider=FakeEmbeddingProvider()), vector_store=vector_store
@@ -192,7 +192,7 @@ async def test_upload_document_indexes_successfully_and_stays_available_for_rag(
     document = await service.upload_document(
         file=_FakeUploadFile("guide.txt", b"Verifiez le capteur papier avant de redemarrer l'imprimante."),
         metadata=DocumentUploadMetadata(
-            title="Guide upload OK", category=DocumentCategory.FAQ, version="1.0", product_ids=[]
+            title="Guide upload OK", category=DocumentCategory.FAQ, version="1.0", product_ids=[product.id]
         ),
         created_by=sav_user,
     )
@@ -214,7 +214,7 @@ async def test_upload_document_indexes_successfully_and_stays_available_for_rag(
 
 
 @pytest.mark.asyncio
-async def test_upload_document_rolls_back_everything_when_text_extraction_fails(db_session, sav_user, tmp_path):
+async def test_upload_document_rolls_back_everything_when_text_extraction_fails(db_session, sav_user, product, tmp_path):
     """DocumentLoadError (fichier sans texte extractible) -> upload entier annulé, 0 artefact."""
 
     vector_store = VectorStore(persist_directory=tmp_path / "chroma")
@@ -228,7 +228,7 @@ async def test_upload_document_rolls_back_everything_when_text_extraction_fails(
         await service.upload_document(
             file=_FakeUploadFile("vide.txt", b"   "),  # aucun texte extractible -> DocumentLoadError
             metadata=DocumentUploadMetadata(
-                title="Titre extraction KO", category=DocumentCategory.FAQ, version="1.0", product_ids=[]
+                title="Titre extraction KO", category=DocumentCategory.FAQ, version="1.0", product_ids=[product.id]
             ),
             created_by=sav_user,
         )
@@ -241,7 +241,7 @@ async def test_upload_document_rolls_back_everything_when_text_extraction_fails(
 
 
 @pytest.mark.asyncio
-async def test_upload_document_rolls_back_and_cleans_file_when_embedding_fails(db_session, sav_user, tmp_path):
+async def test_upload_document_rolls_back_and_cleans_file_when_embedding_fails(db_session, sav_user, product, tmp_path):
     vector_store = VectorStore(persist_directory=tmp_path / "chroma")
     service = DocumentService(
         db_session, embedder=EmbeddingService(provider=FailingEmbeddingProvider()), vector_store=vector_store
@@ -253,7 +253,7 @@ async def test_upload_document_rolls_back_and_cleans_file_when_embedding_fails(d
         await service.upload_document(
             file=_FakeUploadFile("guide.txt", b"Contenu valide pour extraction et chunking."),
             metadata=DocumentUploadMetadata(
-                title="Titre embedding KO", category=DocumentCategory.FAQ, version="1.0", product_ids=[]
+                title="Titre embedding KO", category=DocumentCategory.FAQ, version="1.0", product_ids=[product.id]
             ),
             created_by=sav_user,
         )
@@ -267,7 +267,7 @@ async def test_upload_document_rolls_back_and_cleans_file_when_embedding_fails(d
 
 @pytest.mark.asyncio
 async def test_upload_document_rolls_back_and_cleans_file_on_unexpected_indexing_error(
-    db_session, sav_user, caplog
+    db_session, sav_user, product, caplog
 ):
     """Exception inattendue (pas DocumentLoadError/EmbeddingError) -> même garantie d'atomicité, log ERROR."""
 
@@ -284,7 +284,7 @@ async def test_upload_document_rolls_back_and_cleans_file_on_unexpected_indexing
             await service.upload_document(
                 file=_FakeUploadFile("guide.txt", b"Contenu valide pour declencher le chunking."),
                 metadata=DocumentUploadMetadata(
-                    title="Titre bug inattendu", category=DocumentCategory.FAQ, version="1.0", product_ids=[]
+                    title="Titre bug inattendu", category=DocumentCategory.FAQ, version="1.0", product_ids=[product.id]
                 ),
                 created_by=sav_user,
             )

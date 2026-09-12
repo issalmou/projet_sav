@@ -14,6 +14,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.product import Product
     from app.models.role import Role
 
 
@@ -44,6 +45,15 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
     )
     role: Mapped["Role | None"] = relationship(back_populates="users", lazy="joined")
+
+    # Produits rattachés à ce compte (pertinent uniquement pour le rôle
+    # « client »). Rattachement géré par le staff via la table d'association
+    # client_products. Chargé explicitement par les requêtes qui en ont besoin
+    # (selectinload / refresh), jamais en eager par défaut pour ne pas alourdir
+    # get_current_user, appelé à chaque requête authentifiée.
+    assigned_products: Mapped[list["Product"]] = relationship(
+        secondary="client_products", back_populates="clients"
+    )
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

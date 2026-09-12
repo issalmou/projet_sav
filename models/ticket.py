@@ -1,7 +1,7 @@
 """Modèle Ticket.
 
 Un ticket représente une demande de support SAV : créé par un client, à la
-main ou automatiquement par le diagnostic (cf. futur DiagnosticService ->
+main ou automatiquement par l'agent SAV (outil create_ticket ->
 Ticket, tâche 7), éventuellement rattaché à un produit et à la conversation
 de diagnostic qui l'a généré, puis pris en charge par un technicien
 (CDC "Fonctionnement d'un agent intelligent" : Diagnostic -> Résolution ou

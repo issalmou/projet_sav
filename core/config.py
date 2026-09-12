@@ -49,8 +49,19 @@ class Settings(BaseSettings):
     # --- IA / Intégrations ---
     # Fournisseur actif, choisi automatiquement à partir de cette variable
     # (cf. app.ai.providers.factory.LLMProviderFactory). Valeurs possibles :
-    # "gemini", "openai", "mistral", "qwen", "llama".
+    # "gemini", "openai", "mistral", "qwen", "llama", "ollama".
     LLM_PROVIDER: str = "gemini"
+
+    # Nombre maximal de tours de l'agent LangGraph (chaque tour = un appel LLM
+    # pouvant demander plusieurs outils). Garde-fou anti-boucle.
+    AGENT_MAX_ITERATIONS: int = 6
+
+    # Escalade automatique (CDC §17 : « Résolu ? non → Création ticket »).
+    # Nombre de tentatives de diagnostic INFRUCTUEUSES (étapes proposées puis
+    # client rapportant que ça n'a pas fonctionné) avant que l'agent soit
+    # autorisé à créer un ticket sans confirmation explicite. Le LLM ne décide
+    # jamais de ce seuil : il est vérifié côté backend (`escalate_to_technician`).
+    AGENT_ESCALATION_MAX_FAILED_ATTEMPTS: int = 2
 
     # Timeout explicite sur les appels LLM (Semaine 7, Tâche 2 : optimisation).
     # Aucune valeur n'est imposée par le CDC ; 30s est un choix technique
@@ -79,6 +90,30 @@ class Settings(BaseSettings):
     LLAMA_API_KEY: str | None = None
     LLAMA_MODEL: str = "llama3.1"
     LLAMA_BASE_URL: str = "http://localhost:11434/v1"
+
+    # Ollama : serveur de modèles local exposant une API compatible OpenAI.
+    # Fournisseur distinct de "llama" (générique) : il encapsule les
+    # spécificités du runtime Ollama (pas de `tool_choice`, `num_ctx` dans la
+    # requête, ids de tool calls régénérés). Le modèle doit être un modèle
+    # *instruct* supportant le tool-calling — sinon l'agent ne pourra ni faire
+    # de RAG ni créer de ticket.
+    #
+    # `qwen2.5:3b` choisi après comparaison réelle (2 tours, workflow complet,
+    # sur ce matériel) avec `qwen2.5:7b` : 7b produit une prose légèrement
+    # mieux rédigée quand tout se passe bien, mais a échoué à réellement
+    # invoquer `record_client_feedback` en tant qu'appel d'outil structuré
+    # (il en a écrit la syntaxe en texte brut au lieu de l'appeler) — alors
+    # que 3b a correctement enchaîné tous les outils requis sur les deux
+    # tours testés. Sur ce critère (fiabilité de l'orchestration d'outils,
+    # pas la qualité de la prose), 3b s'est montré plus fiable. À réévaluer
+    # si le matériel change ou si un autre modèle/famille est testé.
+    OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OLLAMA_API_KEY: str | None = None
+    # Fenêtre de contexte forcée (tokens) transmise dans la requête. 0 => ne
+    # rien imposer (défaut serveur d'Ollama, souvent 4096 — souvent trop court
+    # pour prompt système + historique + extraits RAG).
+    OLLAMA_NUM_CTX: int = 8192
 
     # --- Embeddings (RAG)---
     # Fournisseur indépendant de LLM_PROVIDER (cf. app.ai.embeddings.factory) :

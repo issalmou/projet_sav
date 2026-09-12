@@ -34,7 +34,7 @@ class TicketCreate(TicketBase):
 class TicketAutoCreate(TicketBase):
     """Données utilisées uniquement par le workflow de diagnostic automatique.
 
-    Jamais exposé via l'API publique (`DiagnosticService` uniquement,
+    Jamais exposé via l'API publique (agent SAV uniquement,
     tâche 7) : le propriétaire est toujours l'utilisateur pour lequel le
     service agit (le client en train de discuter), jamais une valeur
     fournie dans un payload — c'est pourquoi `client_id` n'existe pas ici,

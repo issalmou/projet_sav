@@ -30,8 +30,8 @@ async def chat_user(db_session):
 
 
 @pytest.mark.asyncio
-async def test_create_conversation_with_messages(db_session, chat_user):
-    conversation = Conversation(user_id=chat_user.id, title="Erreur E17")
+async def test_create_conversation_with_messages(db_session, chat_user, product_id):
+    conversation = Conversation(user_id=chat_user.id, product_id=product_id, title="Erreur E17")
     db_session.add(conversation)
     await db_session.flush()
 
@@ -52,8 +52,8 @@ async def test_create_conversation_with_messages(db_session, chat_user):
 
 
 @pytest.mark.asyncio
-async def test_deleting_conversation_cascades_to_messages(db_session, chat_user):
-    conversation = Conversation(user_id=chat_user.id)
+async def test_deleting_conversation_cascades_to_messages(db_session, chat_user, product_id):
+    conversation = Conversation(user_id=chat_user.id, product_id=product_id)
     db_session.add(conversation)
     await db_session.flush()
 
@@ -70,8 +70,8 @@ async def test_deleting_conversation_cascades_to_messages(db_session, chat_user)
 
 
 @pytest.mark.asyncio
-async def test_conversation_pending_ticket_confirmation_defaults_to_false(db_session, chat_user):
-    conversation = Conversation(user_id=chat_user.id)
+async def test_conversation_pending_ticket_confirmation_defaults_to_false(db_session, chat_user, product_id):
+    conversation = Conversation(user_id=chat_user.id, product_id=product_id)
     db_session.add(conversation)
     await db_session.commit()
     await db_session.refresh(conversation)
@@ -80,8 +80,8 @@ async def test_conversation_pending_ticket_confirmation_defaults_to_false(db_ses
 
 
 @pytest.mark.asyncio
-async def test_invalid_message_role_is_rejected_by_db(db_session, chat_user):
-    conversation = Conversation(user_id=chat_user.id)
+async def test_invalid_message_role_is_rejected_by_db(db_session, chat_user, product_id):
+    conversation = Conversation(user_id=chat_user.id, product_id=product_id)
     db_session.add(conversation)
     await db_session.flush()
 

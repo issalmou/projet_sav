@@ -1,32 +1,57 @@
-"""Service métier du chat IA : conversations, historique et orchestration LLM.
+"""Service métier du chat IA : cycle de vie des conversations + orchestration de l'agent.
 
-Ce module gère la persistance (créer une conversation, ajouter un message,
-lire l'historique) ainsi que le workflow complet d'échange avec l'agent IA :
-Utilisateur -> Conversation -> Historique -> Recherche RAG -> Contexte
-documentaire -> LLM -> Réponse -> Sauvegarde -> Retour. 
-Chaque méthode qui accède à une conversation existante vérifie qu'elle
-appartient à `user_id`, pour qu'un utilisateur ne puisse jamais lire ou
-modifier les conversations d'un autre.
+Séparation stricte des responsabilités :
+- création d'une conversation : `open_conversation` (produit obligatoire,
+  validation de l'affectation client ↔ produit) — appelée par
+  `POST /chat/conversations` ;
+- envoi d'un message : `handle_message` (conversation existante uniquement,
+  vérification de propriété au niveau service) — appelée par
+  `POST /chat/message`.
+
+Le produit d'une conversation est FIXÉ à la création et sert de source de
+vérité (RAG, agent, ticket). Il n'est jamais modifiable ni déductible du texte.
+Toute la logique de diagnostic / d'escalade / de création de ticket vit
+désormais dans l'agent LangGraph (`app.ai.agent`).
 """
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.agent import SavAgent
 from app.ai.exceptions import LLMError
 from app.ai.llm import LLMService
-from app.ai.memory import ConversationMemory
-from app.ai.prompts import LOW_CONFIDENCE_INSTRUCTION, build_context_section, build_system_prompt
-from app.ai.rag.retriever import RetrievedChunk, RetrieverService
-from app.core.logger import logger
+from app.ai.rag.retriever import RetrieverService
 from app.models.conversation import Conversation
+from app.models.conversation_event import ConversationEvent
 from app.models.message import Message
+from app.models.product import Product
 from app.models.user import User
 from app.schemas.chat import MessageRole
+from app.services.client_product_service import ClientProductService
+from app.utils.constants import RoleName
 
 # Titre de secours (troncature du 1er message) si la génération LLM échoue :
 # on préfère un titre mécanique mais lisible à une conversation sans titre.
 _FALLBACK_TITLE_MAX_LENGTH = 60
+
+
+class ProductNotAssignedError(Exception):
+    """Un client tente d'ouvrir une conversation sur un produit qui ne lui est pas affecté.
+
+    Volontairement PAS une sous-classe de `ValueError` (réservé aux
+    « introuvable » → 404) : le produit existe, mais l'accès est refusé → 403.
+    """
+
+
+@dataclass
+class ChatTurnResult:
+    """Résultat d'un tour de chat : conversation, message assistant, ticket éventuel."""
+
+    conversation: Conversation
+    message: Message
+    ticket_id: UUID | None = None
 
 
 class ChatService:
@@ -35,63 +60,88 @@ class ChatService:
     def __init__(
         self,
         session: AsyncSession,
+        agent: SavAgent | None = None,
         llm_service: LLMService | None = None,
         retriever: RetrieverService | None = None,
     ) -> None:
         self.session = session
-        # Injectables pour les tests (LLMService/RetrieverService branchés sur
-        # des doubles factices) ; par défaut, résolvent le fournisseur actif
-        # via LLM_PROVIDER / EMBEDDING_PROVIDER (.env).
+        # Injectables pour les tests (agent / LLM / retriever factices).
         self._llm_service = llm_service or LLMService()
-        self._retriever = retriever or RetrieverService()
+        self._agent = agent or SavAgent(llm_service=self._llm_service, retriever=retriever)
 
-    async def create_conversation(self, user_id: UUID, title: str | None = None) -> Conversation:
-        """Crée une nouvelle conversation pour `user_id`."""
+    # --- Cycle de vie des conversations ----------------------------------
 
-        conversation = Conversation(user_id=user_id, title=title)
+    async def open_conversation(self, user: User, product_id: UUID) -> Conversation:
+        """Crée une conversation pour `user` dans le contexte de `product_id` (obligatoire).
+
+        - `product_id` doit référencer un produit existant (`ValueError` → 404) ;
+        - si `user` a le rôle « client », le produit doit lui être affecté dans
+          `client_products` (`ProductNotAssignedError` → 403). Le staff
+          (administrateur / responsable_sav / superuser) n'est pas soumis à
+          cette restriction.
+        """
+
+        await self._ensure_can_open_conversation(user, product_id)
+
+        conversation = Conversation(user_id=user.id, product_id=product_id)
         self.session.add(conversation)
         await self.session.commit()
         await self.session.refresh(conversation)
         return conversation
 
     async def get_conversation(self, conversation_id: UUID, user_id: UUID) -> Conversation:
-        """Retourne la conversation si elle appartient à `user_id`, sinon lève ValueError."""
+        """Retourne la conversation SI elle appartient à `user_id`, sinon `ValueError` (→ 404).
+
+        C'est LE point de contrôle de propriété : un utilisateur ne peut jamais
+        lire ni écrire dans la conversation d'un autre, même en connaissant son id.
+        """
 
         result = await self.session.execute(
             select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
         )
         conversation = result.scalar_one_or_none()
-
         if conversation is None:
             raise ValueError("Conversation not found")
-
         return conversation
 
     async def list_conversations(self, user_id: UUID) -> list[Conversation]:
-        """Liste les conversations de `user_id`, les plus récemment actives d'abord."""
-
         result = await self.session.execute(
             select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.updated_at.desc())
         )
         return list(result.scalars().all())
 
-    async def add_user_message(self, conversation_id: UUID, content: str) -> Message:
-        """Ajoute le message d'un utilisateur à une conversation."""
+    async def delete_conversation(self, conversation_id: UUID, user_id: UUID) -> None:
+        conversation = await self.get_conversation(conversation_id, user_id)
+        await self.session.delete(conversation)
+        await self.session.commit()
 
+    # --- Messages -------------------------------------------------------
+
+    async def add_user_message(self, conversation_id: UUID, content: str) -> Message:
         return await self._add_message(conversation_id, role="user", content=content)
 
     async def add_assistant_message(self, conversation_id: UUID, content: str) -> Message:
-        """Ajoute la réponse de l'agent IA à une conversation."""
-
         return await self._add_message(conversation_id, role="assistant", content=content)
 
     async def get_history(self, conversation_id: UUID, user_id: UUID) -> list[Message]:
-        """Retourne l'historique ordonné d'une conversation appartenant à `user_id`."""
-
         await self.get_conversation(conversation_id, user_id)
-
         result = await self.session.execute(
             select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def _get_diagnostic_events(self, conversation_id: UUID) -> list[ConversationEvent]:
+        """Journal du diagnostic (recherche / hypothèses / retours client), chronologique.
+
+        Réinjecté dans le prompt de l'agent (récapitulatif) pour que le
+        diagnostic soit réellement multi-tour, et utilisé pour générer la
+        description d'un ticket éventuel.
+        """
+
+        result = await self.session.execute(
+            select(ConversationEvent)
+            .where(ConversationEvent.conversation_id == conversation_id)
+            .order_by(ConversationEvent.created_at)
         )
         return list(result.scalars().all())
 
@@ -102,75 +152,56 @@ class ChatService:
         await self.session.refresh(message)
         return message
 
-    async def send_message(
-        self,
-        user: User,
-        content: str,
-        conversation_id: UUID | None = None,
-        product_id: UUID | None = None,
-        extra_system_instructions: str | None = None,
-    ) -> tuple[Conversation, Message]:
-        """Traite un message utilisateur et retourne (conversation, réponse de l'agent IA).
+    # --- Tour de chat (agent) -----------------------------------------
 
-        Workflow : conversation (récupérée ou créée) -> message utilisateur
-        sauvegardé -> historique -> recherche RAG (filtrée par `product_id`
-        si connu, sinon globale) -> contexte documentaire injecté dans le
-        prompt système -> appel LLM -> réponse sauvegardée -> retour.
+    async def handle_message(self, user: User, conversation_id: UUID, content: str) -> ChatTurnResult:
+        """Traite un message dans une conversation EXISTANTE et appartenant à `user`.
 
-        `extra_system_instructions`, si fourni, est ajouté à la fin du prompt
-        système (ex: instruction de statut du diagnostic automatique, cf.
-        `DiagnosticService`), sans changer le workflow du chat classique.
+        Workflow : vérification de propriété → message client sauvegardé →
+        titre (1er/2e message) → agent LangGraph (RAG + outils + escalade) →
+        réponse sauvegardée. L'agent peut créer un ticket : `ticket_id` est
+        alors renseigné.
         """
 
-        if conversation_id is None:
-            conversation = await self.create_conversation(user.id)
-        else:
-            conversation = await self.get_conversation(conversation_id, user.id)
+        conversation = await self.get_conversation(conversation_id, user.id)
 
         await self.add_user_message(conversation.id, content)
-
         history = await self.get_history(conversation.id, user.id)
+        events = await self._get_diagnostic_events(conversation.id)
         await self._maybe_update_title(conversation, history, user.preferred_language)
 
-        retrieved_chunks = await self._retrieve_context(content, product_id)
+        result = await self._agent.run_turn(
+            session=self.session,
+            user=user,
+            conversation=conversation,
+            history=history,
+            user_message=content,
+            events=events,
+        )
 
-        system_prompt = build_system_prompt(user.preferred_language) + build_context_section(retrieved_chunks)
-        if product_id is None and RetrieverService.is_low_confidence(retrieved_chunks):
-            system_prompt += LOW_CONFIDENCE_INSTRUCTION
-        if extra_system_instructions:
-            system_prompt += extra_system_instructions
+        assistant_message = await self.add_assistant_message(conversation.id, result.reply_text)
+        # `pending_ticket_confirmation` a pu changer via les outils de l'agent.
+        await self.session.refresh(conversation)
 
-        llm_messages = [
-            {"role": "system", "content": system_prompt},
-            *ConversationMemory.to_llm_messages(history),
-        ]
+        return ChatTurnResult(
+            conversation=conversation, message=assistant_message, ticket_id=result.created_ticket_id
+        )
 
-        reply_text = await self._llm_service.generate_reply(llm_messages)
-        assistant_message = await self.add_assistant_message(conversation.id, reply_text)
+    # --- Interne ------------------------------------------------------
 
-        return conversation, assistant_message
+    async def _ensure_can_open_conversation(self, user: User, product_id: UUID | None) -> None:
+        if product_id is None:
+            raise ValueError("product_id is required to open a conversation")
 
-    async def _retrieve_context(self, content: str, product_id: UUID | None) -> list[RetrievedChunk]:
-        """Interroge le RAG pour `content`, sans jamais faire échouer le chat en cas de souci.
+        product = await self.session.get(Product, product_id)
+        if product is None:
+            raise ValueError("Product not found")
 
-        Contrairement au LLM (indispensable au chat), le RAG est une couche
-        d'enrichissement : si la recherche échoue (ex: ChromaDB indisponible,
-        quota d'embeddings épuisé), l'agent doit pouvoir répondre quand même,
-        sans contexte documentaire, plutôt que de renvoyer une erreur au client.
-        """
-
-        try:
-            return await self._retriever.retrieve(content, product_id=product_id)
-        except Exception:
-            logger.warning("RAG retrieval failed, answering without documentary context", exc_info=True)
-            return []
-
-    async def delete_conversation(self, conversation_id: UUID, user_id: UUID) -> None:
-        """Supprime une conversation (et son historique, par cascade DB) appartenant à `user_id`."""
-
-        conversation = await self.get_conversation(conversation_id, user_id)
-        await self.session.delete(conversation)
-        await self.session.commit()
+        role_name = user.role.name if user.role else None
+        if not user.is_superuser and role_name == RoleName.CLIENT.value:
+            assigned = await ClientProductService(self.session).is_assigned(user.id, product_id)
+            if not assigned:
+                raise ProductNotAssignedError("This product is not assigned to your account")
 
     async def _maybe_update_title(
         self, conversation: Conversation, history: list[Message], preferred_language: str
@@ -198,15 +229,11 @@ class ChatService:
 
 
 def _fallback_title(content: str, *, max_length: int = _FALLBACK_TITLE_MAX_LENGTH) -> str:
-    """Titre de secours : le message tronqué au dernier mot entier, sans le couper en plein milieu."""
-
     stripped = content.strip()
-
     if len(stripped) <= max_length:
         return stripped
-
     truncated = stripped[:max_length].rsplit(" ", 1)[0]
     return f"{truncated}…" if truncated else stripped[:max_length]
 
 
-__all__ = ["ChatService"]
+__all__ = ["ChatService", "ChatTurnResult", "ProductNotAssignedError"]

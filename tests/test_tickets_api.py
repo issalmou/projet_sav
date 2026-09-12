@@ -4,7 +4,7 @@ Correction RBAC (semaine 6) : la création manuelle d'un ticket est réservée
 au staff (Responsable SAV / Administrateur / superuser), toujours au nom
 d'un client précis. Client et Technicien ne peuvent plus créer de ticket du
 tout via l'API — seul le workflow de diagnostic automatique
-(DiagnosticService, non exercé ici) crée des tickets en leur nom.
+(agent SAV, non exercé ici) crée des tickets en leur nom.
 """
 import uuid
 
