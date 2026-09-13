@@ -510,12 +510,92 @@ async def test_get_conversation_returns_history_and_product(client, chat_client)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("staff_role", ["administrateur", "responsable_sav"])
+async def test_staff_can_list_and_view_any_client_conversation(client, chat_client, db_session, role_ids, staff_role):
+    """Le staff (administrateur / responsable_sav) voit toutes les conversations
+    via GET /chat/conversations* — un client, lui, ne voit que les siennes."""
+
+    _, client_token, product = chat_client
+    conv = (await _open_conv(client, client_token, product.id)).json()
+
+    us = UserService(db_session)
+    staff = await us.create_user(
+        UserCreate(email=unique_email("staffvis"), password="ValidPass1", role_id=role_ids[staff_role])
+    )
+    login = await client.post("/api/v1/auth/login", json={"email": staff.email, "password": "ValidPass1"})
+    staff_token = login.json()["access_token"]
+
+    listed = await client.get("/api/v1/chat/conversations", headers=_h(staff_token))
+    assert conv["id"] in [c["id"] for c in listed.json()]
+
+    detail = await client.get(f"/api/v1/chat/conversations/{conv['id']}", headers=_h(staff_token))
+    assert detail.status_code == 200
+    assert detail.json()["product_id"] == str(product.id)
+
+    await db_session.delete(await us.get_user_by_id(staff.id))
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_delete_conversation(client, chat_client):
     _, token, product = chat_client
     conv = (await _open_conv(client, token, product.id)).json()
 
     assert (await client.delete(f"/api/v1/chat/conversations/{conv['id']}", headers=_h(token))).status_code == 204
     assert (await client.get(f"/api/v1/chat/conversations/{conv['id']}", headers=_h(token))).status_code == 404
+
+
+# --- Résolution paresseuse du fournisseur LLM (pas de crash sans clé API) --
+# `default_agent` (autouse) court-circuite `get_chat_service` pour tous les
+# autres tests de ce fichier : le vrai chemin de production (sans override)
+# n'était donc jamais exercé — c'est exactement lui que ces deux tests visent.
+
+
+@pytest.mark.asyncio
+async def test_open_conversation_works_without_llm_configured(client, chat_client, monkeypatch):
+    """Ouvrir une conversation n'appelle jamais le LLM : ça ne doit jamais
+    échouer faute de clé API configurée (reproduit un vrai 500 observé en
+    environnement Docker avec un .env par défaut, sans clé Gemini)."""
+
+    from app.api.chat import get_chat_service
+    from app.core.config import settings
+
+    _, token, product = chat_client
+    app.dependency_overrides.pop(get_chat_service, None)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
+
+    resp = await client.post(
+        "/api/v1/chat/conversations", json={"product_id": str(product.id)}, headers=_h(token)
+    )
+
+    assert resp.status_code == 201, resp.text
+
+
+@pytest.mark.asyncio
+async def test_send_message_returns_503_not_500_when_llm_not_configured(client, chat_client, monkeypatch):
+    """Chemin `send_message` du même bug : un fournisseur non configuré doit
+    renvoyer un 503 propre (`except LLMError`), jamais un 500 brut levé
+    pendant l'injection de dépendance FastAPI, hors de tout try/except."""
+
+    from app.api.chat import get_chat_service
+    from app.core.config import settings
+
+    _, token, product = chat_client
+    conv = await _open_conv(client, token, product.id)  # via default_agent, encore actif ici
+    assert conv.status_code == 201
+
+    app.dependency_overrides.pop(get_chat_service, None)
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
+
+    resp = await client.post(
+        "/api/v1/chat/message",
+        json={"conversation_id": conv.json()["id"], "content": "Bonjour"},
+        headers=_h(token),
+    )
+
+    assert resp.status_code == 503
 
 
 __all__: list[str] = []

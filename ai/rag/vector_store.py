@@ -1,4 +1,5 @@
 """Stockage vectoriel des chunks documentaires dans ChromaDB."""
+from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
@@ -10,13 +11,38 @@ from app.core.config import settings
 COLLECTION_NAME = "sav_documents"
 
 
+@lru_cache(maxsize=64)
+def _get_client(path: str) -> chromadb.ClientAPI:
+    """Un seul client ChromaDB par chemin de persistance et par processus.
+
+    `VectorStore` est reconstruit à chaque tour de chat (nouveau
+    `RetrieverService` par requête) : sans ce cache, chaque message
+    rouvrirait la base ChromaDB depuis le disque inutilement. Cache borné
+    (contrairement à celui du modèle E5) : les tests utilisent chacun un
+    répertoire temporaire distinct, une taille illimitée accumulerait un
+    client par test sur toute la suite.
+    """
+
+    return chromadb.PersistentClient(path=path)
+
+
+@lru_cache(maxsize=1)
+def _get_http_client(host: str, port: int) -> chromadb.ClientAPI:
+    """Un seul client HTTP par processus vers le serveur Chroma distant."""
+
+    return chromadb.HttpClient(host=host, port=port)
+
+
 class VectorStore:
     """Interface autour de la collection ChromaDB des chunks documentaires."""
 
     def __init__(self, persist_directory: str | Path | None = None) -> None:
-        client = chromadb.PersistentClient(path=str(persist_directory or settings.CHROMA_DB_DIR))
-        # embedding_function=None : les embeddings sont toujours calculés en
-        # amont par EmbeddingService, jamais par ChromaDB lui-même.
+        # Un chemin explicite force le client embarqué, notamment pour les tests.
+        if persist_directory is None and settings.CHROMA_HOST:
+            client = _get_http_client(settings.CHROMA_HOST, settings.CHROMA_PORT)
+        else:
+            client = _get_client(str(persist_directory or settings.CHROMA_DB_DIR))
+        # Les embeddings sont calculés par EmbeddingService.
         self._collection = client.get_or_create_collection(name=COLLECTION_NAME, embedding_function=None)
 
     def upsert_document_chunks(

@@ -1,4 +1,4 @@
-"""Service de garantie produit (CDC semaine 6 : API Garanties).
+"""Service de garantie produit.
 
 Option A validée : la garantie est une propriété statique du produit
 (`Product.warranty_months`), pas une instance liée à un achat (pas de date

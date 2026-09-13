@@ -18,7 +18,7 @@ class LLMRequestError(LLMError):
 
 
 class EmbeddingError(Exception):
-    """Erreur générique de la couche embeddings (RAG, semaine 4)."""
+    """Erreur générique de la couche embeddings."""
 
 
 class EmbeddingProviderNotConfiguredError(EmbeddingError):

@@ -37,7 +37,7 @@ def require_roles(*allowed_roles: str):
 
     return _check_role
 
-require_document_manager = require_roles(RoleName.RESPONSABLE_SAV.value)
+require_document_manager = require_roles(*STAFF_ROLES)
 
 def get_role_name(user: User) -> str | None:
     """Retourne le nom du rôle d'un utilisateur, ou None s'il n'en a pas."""

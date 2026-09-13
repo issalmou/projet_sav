@@ -1,4 +1,4 @@
-"""Schémas Pydantic pour les tickets SAV (CDC semaine 5/6)."""
+"""Schémas Pydantic pour les tickets SAV."""
 from datetime import datetime
 from uuid import UUID
 
@@ -21,11 +21,11 @@ class TicketCreate(TicketBase):
     """Données attendues pour créer un ticket manuellement, via l'API publique.
 
     Réservé au staff (Responsable SAV / Administrateur / superuser,
-    correction RBAC semaine 6) : le staff crée toujours un ticket au nom
+    correction RBAC) : le staff crée toujours un ticket au nom
     d'un client précis, jamais pour lui-même — `client_id` est donc
     obligatoire ici. `conversation_id` n'apparaît volontairement pas :
     renseigné uniquement par le workflow de diagnostic automatique
-    (tâche 7), jamais à la création manuelle.
+    jamais à la création manuelle.
     """
 
     client_id: UUID
@@ -35,7 +35,7 @@ class TicketAutoCreate(TicketBase):
     """Données utilisées uniquement par le workflow de diagnostic automatique.
 
     Jamais exposé via l'API publique (agent SAV uniquement,
-    tâche 7) : le propriétaire est toujours l'utilisateur pour lequel le
+    le propriétaire est toujours l'utilisateur pour lequel le
     service agit (le client en train de discuter), jamais une valeur
     fournie dans un payload — c'est pourquoi `client_id` n'existe pas ici,
     contrairement à `TicketCreate`.

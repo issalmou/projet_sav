@@ -1,7 +1,7 @@
 """Service de gestion des rôles.
 
 Ce module centralise la logique métier de création, consultation, mise à
-jour et suppression des rôles applicatifs. Les 4 rôles officiels du CDC
+jour et suppression des rôles applicatifs. Les rôles officiels
 (voir utils/constants.py et database/seed.py) ne sont ni renommables ni
 recréables sous un autre nom (RoleUpdate n'expose pas `name`, et `name` est
 typé `RoleName` dans RoleCreate) ; la suppression est bloquée tant qu'au

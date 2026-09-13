@@ -46,16 +46,10 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # NULL = pas encore indexé pour le RAG (extraction + chunking + embedding
-    # + stockage vectoriel). Sert de garde d'idempotence : on
-    # ne réindexe pas un document déjà traité (cf. DocumentService.index_document).
-    # Même principe que User.consent_given_at / User.tokens_revoked_at : un
-    # horodatage nullable qui fait à la fois office de statut et de date.
+    # NULL signifie que le document n'est pas encore indexé.
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
-    # RESTRICT plutôt que CASCADE/SET NULL : on ne veut pas qu'une suppression
-    # de compte Responsable SAV efface silencieusement l'attribution des
-    # documents qu'il a ajoutés à la base de connaissances partagée.
+    # L'historique documentaire doit survivre à la suppression du créateur.
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )

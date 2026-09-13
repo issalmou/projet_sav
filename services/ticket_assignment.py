@@ -1,6 +1,6 @@
 """Affectation automatique d'un ticket à un technicien.
 
-Règle métier (décision validée, PAS une exigence du CDC) :
+Règle métier :
 1. choisir **aléatoirement** un technicien ACTIF (rôle `technicien`,
    `is_active = true`) — chaque technicien actif a une chance égale d'être
    choisi ;

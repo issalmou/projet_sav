@@ -1,18 +1,4 @@
-"""Service métier du chat IA : cycle de vie des conversations + orchestration de l'agent.
-
-Séparation stricte des responsabilités :
-- création d'une conversation : `open_conversation` (produit obligatoire,
-  validation de l'affectation client ↔ produit) — appelée par
-  `POST /chat/conversations` ;
-- envoi d'un message : `handle_message` (conversation existante uniquement,
-  vérification de propriété au niveau service) — appelée par
-  `POST /chat/message`.
-
-Le produit d'une conversation est FIXÉ à la création et sert de source de
-vérité (RAG, agent, ticket). Il n'est jamais modifiable ni déductible du texte.
-Toute la logique de diagnostic / d'escalade / de création de ticket vit
-désormais dans l'agent LangGraph (`app.ai.agent`).
-"""
+"""Service métier du chat IA et des conversations."""
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -20,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.agent import SavAgent
+from app.ai.embeddings.warmup import warm_embedding_model_in_background
 from app.ai.exceptions import LLMError
 from app.ai.llm import LLMService
 from app.ai.rag.retriever import RetrieverService
@@ -29,11 +16,11 @@ from app.models.message import Message
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.chat import MessageRole
+from app.core.permissions import STAFF_ROLES, get_role_name
 from app.services.client_product_service import ClientProductService
 from app.utils.constants import RoleName
 
-# Titre de secours (troncature du 1er message) si la génération LLM échoue :
-# on préfère un titre mécanique mais lisible à une conversation sans titre.
+# Un titre de secours reste préférable à un titre vide.
 _FALLBACK_TITLE_MAX_LENGTH = 60
 
 
@@ -65,11 +52,28 @@ class ChatService:
         retriever: RetrieverService | None = None,
     ) -> None:
         self.session = session
-        # Injectables pour les tests (agent / LLM / retriever factices).
         self._llm_service = llm_service or LLMService()
-        self._agent = agent or SavAgent(llm_service=self._llm_service, retriever=retriever)
+        self._explicit_agent = agent
+        self._explicit_retriever = retriever
+        self._lazy_agent: SavAgent | None = None
 
-    # --- Cycle de vie des conversations ----------------------------------
+    @property
+    def _agent(self) -> SavAgent:
+        """Construit l'agent (et donc le retriever RAG / le modèle d'embeddings) à la
+        première utilisation réelle, pas dans `__init__`.
+
+        `ChatService` est instancié pour TOUTES les routes `/chat/*`, y compris
+        l'ouverture, la liste, la lecture et la suppression de conversations —
+        aucune d'elles n'appelle l'agent. Le construire systématiquement
+        chargeait inutilement le modèle E5 / le client ChromaDB sur ces routes,
+        alors que seul `handle_message` en a besoin.
+        """
+
+        if self._explicit_agent is not None:
+            return self._explicit_agent
+        if self._lazy_agent is None:
+            self._lazy_agent = SavAgent(llm_service=self._llm_service, retriever=self._explicit_retriever)
+        return self._lazy_agent
 
     async def open_conversation(self, user: User, product_id: UUID) -> Conversation:
         """Crée une conversation pour `user` dans le contexte de `product_id` (obligatoire).
@@ -87,27 +91,45 @@ class ChatService:
         self.session.add(conversation)
         await self.session.commit()
         await self.session.refresh(conversation)
+        warm_embedding_model_in_background()
         return conversation
 
-    async def get_conversation(self, conversation_id: UUID, user_id: UUID) -> Conversation:
-        """Retourne la conversation SI elle appartient à `user_id`, sinon `ValueError` (→ 404).
+    async def get_conversation(
+        self, conversation_id: UUID, user: User | UUID, *, allow_staff_access: bool = False
+    ) -> Conversation:
+        """Retourne la conversation SI elle appartient à `user`, sinon `ValueError` (→ 404).
 
-        C'est LE point de contrôle de propriété : un utilisateur ne peut jamais
-        lire ni écrire dans la conversation d'un autre, même en connaissant son id.
+        C'est LE point de contrôle de propriété : par défaut, un utilisateur ne
+        peut jamais lire ni écrire dans la conversation d'un autre, même en
+        connaissant son id — `handle_message` et `delete_conversation`
+        s'appuient sur cette stricte propriété et ne passent jamais
+        `allow_staff_access=True`.
+
+        `allow_staff_access=True` (routes de LECTURE seule, `GET /chat/conversations*`)
+        élargit ce périmètre au staff (`STAFF_ROLES`) et au superuser, qui
+        voient alors toutes les conversations — jamais pour envoyer un message
+        ou en supprimer une à la place du client.
         """
 
-        result = await self.session.execute(
-            select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id)
-        )
+        query = select(Conversation).where(Conversation.id == conversation_id)
+        if not (allow_staff_access and isinstance(user, User) and _is_staff_or_superuser(user)):
+            user_id = user.id if isinstance(user, User) else user
+            query = query.where(Conversation.user_id == user_id)
+
+        result = await self.session.execute(query)
         conversation = result.scalar_one_or_none()
         if conversation is None:
             raise ValueError("Conversation not found")
         return conversation
 
-    async def list_conversations(self, user_id: UUID) -> list[Conversation]:
-        result = await self.session.execute(
-            select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.updated_at.desc())
-        )
+    async def list_conversations(self, user: User) -> list[Conversation]:
+        """Liste les conversations visibles par `user` : les siennes, ou toutes
+        pour le staff (`STAFF_ROLES`) / un superuser (cf. `get_conversation`)."""
+
+        query = select(Conversation).order_by(Conversation.updated_at.desc())
+        if not _is_staff_or_superuser(user):
+            query = query.where(Conversation.user_id == user.id)
+        result = await self.session.execute(query)
         return list(result.scalars().all())
 
     async def delete_conversation(self, conversation_id: UUID, user_id: UUID) -> None:
@@ -115,16 +137,16 @@ class ChatService:
         await self.session.delete(conversation)
         await self.session.commit()
 
-    # --- Messages -------------------------------------------------------
-
     async def add_user_message(self, conversation_id: UUID, content: str) -> Message:
         return await self._add_message(conversation_id, role="user", content=content)
 
     async def add_assistant_message(self, conversation_id: UUID, content: str) -> Message:
         return await self._add_message(conversation_id, role="assistant", content=content)
 
-    async def get_history(self, conversation_id: UUID, user_id: UUID) -> list[Message]:
-        await self.get_conversation(conversation_id, user_id)
+    async def get_history(
+        self, conversation_id: UUID, user: User | UUID, *, allow_staff_access: bool = False
+    ) -> list[Message]:
+        await self.get_conversation(conversation_id, user, allow_staff_access=allow_staff_access)
         result = await self.session.execute(
             select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at)
         )
@@ -152,8 +174,6 @@ class ChatService:
         await self.session.refresh(message)
         return message
 
-    # --- Tour de chat (agent) -----------------------------------------
-
     async def handle_message(self, user: User, conversation_id: UUID, content: str) -> ChatTurnResult:
         """Traite un message dans une conversation EXISTANTE et appartenant à `user`.
 
@@ -180,14 +200,11 @@ class ChatService:
         )
 
         assistant_message = await self.add_assistant_message(conversation.id, result.reply_text)
-        # `pending_ticket_confirmation` a pu changer via les outils de l'agent.
         await self.session.refresh(conversation)
 
         return ChatTurnResult(
             conversation=conversation, message=assistant_message, ticket_id=result.created_ticket_id
         )
-
-    # --- Interne ------------------------------------------------------
 
     async def _ensure_can_open_conversation(self, user: User, product_id: UUID | None) -> None:
         if product_id is None:
@@ -226,6 +243,13 @@ class ChatService:
         self.session.add(conversation)
         await self.session.commit()
         await self.session.refresh(conversation)
+
+
+def _is_staff_or_superuser(user: User) -> bool:
+    """Staff (`STAFF_ROLES` : administrateur / responsable_sav) ou superuser :
+    ces comptes voient toutes les conversations en lecture (cf. `get_conversation`)."""
+
+    return user.is_superuser or get_role_name(user) in STAFF_ROLES
 
 
 def _fallback_title(content: str, *, max_length: int = _FALLBACK_TITLE_MAX_LENGTH) -> str:

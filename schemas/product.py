@@ -40,7 +40,7 @@ class ProductRead(ProductBase):
 
 
 class ProductWarrantyRead(BaseModel):
-    """Garantie d'un produit (CDC semaine 6 : API Garanties).
+    """Garantie d'un produit.
 
     Option A validée : propriété statique du produit (`Product.warranty_months`),
     pas de garantie par instance (aucune date d'achat/expiration dans le modèle).
@@ -55,7 +55,7 @@ class ProductWarrantyRead(BaseModel):
 
 
 class WarrantyUpdate(BaseModel):
-    """Données attendues pour modifier la garantie d'un produit (CDC semaine 6 : API Garanties).
+    """Données attendues pour modifier la garantie d'un produit.
 
     Option A validée : seule `warranty_months` est modifiable via `/warranties`
     (les autres champs du produit passent par `PATCH /products/{id}`).

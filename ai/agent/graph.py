@@ -54,7 +54,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.ai.agent.context import AgentContext
 from app.ai.agent.prompts import build_agent_system_prompt, build_diagnostic_recap
-from app.ai.agent.tools import TOOL_SPECS, execute_tool
+from app.ai.agent.tools import TOOL_SPECS, execute_tool, request_ticket_creation
 from app.ai.exceptions import LLMError
 from app.ai.llm import LLMService
 from app.ai.memory import ConversationMemory
@@ -79,6 +79,27 @@ _FINALIZE_NUDGE = (
 _GENERIC_FALLBACK_REPLY = (
     "Je n'ai pas pu finaliser ma réponse. Pouvez-vous reformuler ou préciser votre demande ?"
 )
+_NO_RELEVANT_DOCS_REPLIES = {
+    "fr": (
+        "Je n'ai pas trouvé cette information dans la documentation disponible pour votre produit, "
+        "et je préfère ne pas inventer de réponse. Voulez-vous que je crée un ticket pour transmettre "
+        "votre demande à un technicien ? Répondez clairement oui ou non. Vous pouvez aussi préciser "
+        "le symptôme ou le contexte pour relancer une recherche."
+    ),
+    "en": (
+        "I could not find this information in the documentation available for your product, and I "
+        "prefer not to invent an answer. Would you like me to create a ticket for a technician? "
+        "Please answer clearly yes or no. You can also clarify the symptom or context to retry the search."
+    ),
+    "ar": (
+        "لم أجد هذه المعلومة في الوثائق المتاحة لمنتجك، ولا أريد اختلاق إجابة. هل تريد مني إنشاء "
+        "تذكرة لإرسال طلبك إلى فني؟ أجب بنعم أو لا بوضوح. يمكنك أيضًا توضيح العَرَض أو السياق لإعادة البحث."
+    ),
+}
+
+
+def _no_relevant_docs_reply(language: str) -> str:
+    return _NO_RELEVANT_DOCS_REPLIES.get(language, _NO_RELEVANT_DOCS_REPLIES["fr"])
 
 # Outils purement informatifs dont la présence dans `ctx.tool_trace` dispense
 # de l'exigence search_docs — jamais les outils de ticket : `execute_tool` les
@@ -193,6 +214,12 @@ def _gate_violation(ctx: AgentContext) -> str | None:
     ):
         return "search_docs"
 
+    # Sans information documentaire, proposer un ticket et attendre le client.
+    # L'escalade automatique reste réservée aux diagnostics documentés mais
+    # infructueux après plusieurs tentatives.
+    if ctx.no_relevant_docs_found:
+        return None
+
     # Un ticket déjà actif (même créé lors d'un tour antérieur) dispense de
     # relancer un diagnostic : l'escalade est une étape terminale. Sinon,
     # submit_diagnosis est obligatoire avant de répondre, sauf si le seuil
@@ -207,7 +234,11 @@ def _gate_violation(ctx: AgentContext) -> str | None:
         if ctx.escalation_allowed:
             if "escalate_to_technician" not in ctx.tool_trace:
                 return "escalate_to_technician"
-        elif "submit_diagnosis" not in ctx.tool_trace:
+        # Aucun résultat pertinent trouvé : ne pas exiger submit_diagnosis (il
+        # se refuserait de toute façon, cf. tools.submit_diagnosis) — laisser
+        # l'agent conclure directement en informant honnêtement le client,
+        # plutôt que de fabriquer une cause/des étapes sans base documentaire.
+        elif not ctx.no_relevant_docs_found and "submit_diagnosis" not in ctx.tool_trace:
             return "submit_diagnosis"
 
     return None
@@ -412,6 +443,13 @@ class SavAgent:
             raise
 
         reply_text = _strip_internal_leak(_extract_final_reply(final_state["messages"]))
+        if (
+            ctx.no_relevant_docs_found
+            and ctx.created_ticket_id is None
+            and not ctx.conversation.pending_ticket_confirmation
+        ):
+            await request_ticket_creation(ctx, user_message)
+            reply_text = _no_relevant_docs_reply(user.preferred_language)
         return AgentTurnResult(
             reply_text=reply_text,
             created_ticket_id=ctx.created_ticket_id,

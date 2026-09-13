@@ -240,6 +240,52 @@ async def test_submit_diagnosis_sets_awaiting_and_logs(tool_ctx):
     assert diag.payload["steps"] == ["Ouvrir le capot", "Nettoyer"]  # numérotation nettoyée
 
 
+# --- search_docs -> aucun résultat pertinent : pas de diagnostic inventé ---
+
+
+@pytest.mark.asyncio
+async def test_search_docs_flags_no_relevant_docs_when_empty(tool_ctx):
+    ctx, *_ = tool_ctx  # retriever du fixture : StubRetriever([])
+
+    await execute_tool(ctx, "search_docs", {"query": "voyant rouge"})
+
+    assert ctx.no_relevant_docs_found is True
+
+
+@pytest.mark.asyncio
+async def test_search_docs_clears_no_relevant_docs_when_chunks_found(tool_ctx):
+    from app.ai.rag.retriever import RetrievedChunk
+
+    ctx, *_ = tool_ctx
+    ctx.retriever._chunks = [
+        RetrievedChunk(text="Vérifiez le bac papier.", document_id=uuid.uuid4(), title="Guide", category="faq", distance=0.1)
+    ]
+
+    await execute_tool(ctx, "search_docs", {"query": "voyant rouge"})
+
+    assert ctx.no_relevant_docs_found is False
+
+
+@pytest.mark.asyncio
+async def test_submit_diagnosis_refused_when_no_relevant_docs_found(tool_ctx):
+    """La base de connaissances ne contient rien de pertinent pour cette
+    recherche : submit_diagnosis doit se refuser plutôt que de fabriquer une
+    cause/des étapes absentes de la documentation (cf. AgentContext.no_relevant_docs_found)."""
+
+    ctx, *_ = tool_ctx
+    ctx.conversation.search_performed = True
+    ctx.no_relevant_docs_found = True
+    await ctx.session.commit()
+
+    out = await execute_tool(ctx, "submit_diagnosis", {"cause": "Cause inventée", "steps": ["Étape inventée"]})
+
+    assert "aucun résultat pertinent" in out.lower()
+    await ctx.session.refresh(ctx.conversation)
+    assert ctx.conversation.awaiting_step_feedback is False
+    events = [e for e in await _events(ctx) if e.event_type == "diagnosis"]
+    assert events == []  # rien enregistré : le refus intervient avant tout log
+
+
 # --- record_client_feedback --------------------------------------
 
 

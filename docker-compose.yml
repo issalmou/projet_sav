@@ -17,6 +17,16 @@ services:
       timeout: 5s
       retries: 5
 
+  chroma:
+    image: chromadb/chroma:1.5.9
+    container_name: ai_sav_chroma
+    restart: unless-stopped
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+    volumes:
+      - chroma_data:/data
+
   backend:
     build:
       context: .
@@ -29,22 +39,42 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/sav_db
       APP_ENV: development
       DEBUG: "true"
+      # Serveur Chroma distant (service ci-dessus) : la persistance vectorielle
+      # vit dans son propre volume, pas dans la couche inscriptible du
+      # conteneur backend (sinon perdue à chaque redémarrage/rebuild, cf.
+      # `core.config.settings.CHROMA_HOST`).
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
     ports:
       - "8000:8000"
+    volumes:
+      # Sans ce volume, uploads/ vit dans la couche inscriptible du conteneur :
+      # tout redémarrage/recréation (rebuild, `docker compose up`, crash)
+      # l'efface silencieusement alors que `documents.indexed_at` reste
+      # positionné en base (Postgres, lui, persiste déjà via postgres_data).
+      - uploads_data:/app/app/uploads
     depends_on:
       db:
         condition: service_healthy
+      chroma:
+        condition: service_started
     # Permet au conteneur de joindre un service tournant sur l'hôte (ex.
     # Ollama, cf. OLLAMA_BASE_URL=http://host.docker.internal:11434/v1) —
     # résolu nativement par Docker Desktop, ajouté explicitement pour Linux.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # root ici (au lieu de l'`appuser` du Dockerfile) : un volume nommé fraîchement
+    # créé appartient à root, ce qui bloquerait toute écriture dans uploads/ par
+    # appuser — le chown initial corrige ça avant de redescendre en appuser
+    # (via `su`) pour le reste, migrations/seed/serveur inclus.
+    user: root
     # Migrations puis seed idempotent (rôles + premier admin si configuré)
     # avant de démarrer l'API : un `docker compose up -d` sur une base vierge
     # doit suffire, sans étape manuelle.
     command: >
-      sh -c "cd app && alembic upgrade head && python -m app.database.seed &&
-      uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "chown -R appuser:appuser /app/app/uploads &&
+      su appuser -c 'cd app && alembic upgrade head && python -m app.database.seed &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000'"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
@@ -56,3 +86,5 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
+  chroma_data:

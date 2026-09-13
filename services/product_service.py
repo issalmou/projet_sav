@@ -1,4 +1,4 @@
-"""Services liés aux produits (CDC semaine 6 : API Produits)."""
+"""Services liés aux produits."""
 from uuid import UUID
 
 from sqlalchemy import select

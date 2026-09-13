@@ -54,6 +54,14 @@ class AgentContext:
     # Un ticket déjà ouvert dispense le gate de relancer un diagnostic.
     has_active_ticket: bool = False
 
+    # Vrai si le DERNIER search_docs de ce tour n'a renvoyé aucun chunk
+    # pertinent (base documentaire vide sur ce point). Empêche `submit_diagnosis`
+    # de fabriquer une cause/des étapes sans aucune base réelle : ni le gate
+    # (qui cesse alors d'exiger submit_diagnosis) ni l'outil lui-même
+    # (deuxième verrou, cf. `tools.submit_diagnosis`) ne laissent l'agent
+    # inventer une réponse absente de la base de connaissances.
+    no_relevant_docs_found: bool = False
+
     def __post_init__(self) -> None:
         # UUID nus, insensibles à l'expiration ORM après un rollback.
         self._conversation_id: UUID = self.conversation.id

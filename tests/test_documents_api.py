@@ -23,14 +23,14 @@ async def test_responsable_sav_passes_the_permission_check_on_list(client, actor
 
 
 @pytest.mark.asyncio
-async def test_responsable_sav_passes_the_permission_check_on_create_stub(client, actors):
-    """POST / reste un stub (501) distinct de POST /upload, mais la permission passe."""
+async def test_administrateur_passes_the_permission_check_on_list(client, actors):
+    """L'administrateur a désormais le même accès documentaire que le Responsable SAV."""
 
-    _, responsable_token = actors["responsable"]
+    _, admin_token = actors["admin"]
 
-    response = await client.post("/api/v1/documents/", headers=_auth_headers(responsable_token))
+    response = await client.get("/api/v1/documents/", headers=_auth_headers(admin_token))
 
-    assert response.status_code == 501
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -45,9 +45,9 @@ async def test_super_admin_bypasses_the_permission_check(client, actors):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("actor_key", ["client", "technicien", "admin"])
+@pytest.mark.parametrize("actor_key", ["client", "technicien"])
 async def test_other_roles_are_forbidden(client, actors, actor_key):
-    """CLIENT, TECHNICIEN, et un administrateur non-superuser sont refusés (CDC : gestion RAG réservée au SAV)."""
+    """CLIENT et TECHNICIEN sont refusés (gestion RAG réservée au staff : Responsable SAV / Administrateur)."""
 
     _, token = actors[actor_key]
 

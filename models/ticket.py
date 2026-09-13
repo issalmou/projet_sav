@@ -1,12 +1,4 @@
-"""Modèle Ticket.
-
-Un ticket représente une demande de support SAV : créé par un client, à la
-main ou automatiquement par l'agent SAV (outil create_ticket ->
-Ticket, tâche 7), éventuellement rattaché à un produit et à la conversation
-de diagnostic qui l'a généré, puis pris en charge par un technicien
-(CDC "Fonctionnement d'un agent intelligent" : Diagnostic -> Résolution ou
-ticket -> Escalade).
-"""
+"""Modèle des tickets de support SAV."""
 import uuid
 from typing import TYPE_CHECKING
 
@@ -34,15 +26,10 @@ class Ticket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False, index=True)
 
-    # RESTRICT : un ticket est un enregistrement d'activité SAV (historique de
-    # réparation, traçabilité garantie) à valeur durable pour l'équipe, au
-    # même titre que Document.created_by_id — la suppression d'un compte
-    # client ne doit pas effacer silencieusement cet historique.
+    # L’historique SAV doit survivre à la suppression du client.
     client_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    # SET NULL : référence optionnelle à "qui traite le ticket actuellement" ;
-    # elle doit pouvoir se vider proprement, comme User.role_id.
     assigned_technician_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -53,9 +40,7 @@ class Ticket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    # foreign_keys explicite requis : deux FK distinctes vers `users` sur ce
-    # modèle (client_id, assigned_technician_id) rendent la relation
-    # ambiguë pour SQLAlchemy sans cette précision.
+    # Les deux FK vers users rendent la relation ambiguë sans cette précision.
     client: Mapped["User"] = relationship(foreign_keys=[client_id])
     assigned_technician: Mapped["User | None"] = relationship(foreign_keys=[assigned_technician_id])
     product: Mapped["Product | None"] = relationship()

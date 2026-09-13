@@ -70,6 +70,26 @@ async def test_superuser_sees_documents_from_every_creator(db_session, sav_user)
 
 
 @pytest.mark.asyncio
+async def test_administrateur_sees_documents_from_every_creator(db_session, sav_user, role_ids):
+    admin = await UserService(db_session).create_user(
+        UserCreate(email=f"admin.{uuid.uuid4().hex[:10]}@example.com", password="ValidPass1", role_id=role_ids["administrateur"])
+    )
+
+    mine = _document_for(sav_user.id, "A moi")
+    db_session.add(mine)
+    await db_session.commit()
+
+    service = DocumentService(db_session)
+    results = await service.list_documents(admin)
+
+    assert mine.id in {document.id for document in results}
+
+    await db_session.delete(mine)
+    await db_session.delete(admin)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_list_documents_via_api_is_scoped_to_creator(client, db_session, actors, role_ids, product):
     _, responsable_token = actors["responsable"]
     other_responsable, other_token = await create_and_login(client, db_session, role_id=role_ids["responsable_sav"])

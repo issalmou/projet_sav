@@ -1,7 +1,7 @@
 """Prompts système de l'agent SAV LangGraph.
 
 Le prompt décrit le rôle, le produit (fixé), les outils et la MÉTHODE de
-diagnostic interactif (CDC §14/§17). Aucune décision de sécurité / d'intégrité
+diagnostic interactif. Aucune décision de sécurité ou d'intégrité
 n'est confiée au LLM : elles sont appliquées par les outils
 (`app.ai.agent.tools`) et par l'état déterministe de `Conversation`.
 """
@@ -111,7 +111,14 @@ Le message actuel du client est son retour après les avoir testées.
 - Appelle record_client_feedback(resolved=true) s'il dit que c'est réglé,
   record_client_feedback(resolved=false) s'il dit que ça ne marche toujours pas.
 - Utilise le mécanisme d'appel d'outil réel, jamais du texte simulant l'appel.
-- S'il n'a manifestement pas encore testé, réponds simplement et attends."""
+- S'il n'a manifestement pas encore testé, réponds simplement et attends.
+- S'il dit AUSSI, dans ce même message, qu'il veut un ticket / un technicien
+  (en plus de son retour négatif) : appelle LES DEUX outils dans ce tour —
+  record_client_feedback(resolved=false) ET request_ticket_creation(...). Le
+  diagnostic obligatoire (nouvelle recherche, nouvelle hypothèse) reste dû
+  indépendamment de la demande de ticket ; mentionne les deux dans ta réponse
+  (nouvelles étapes à tester, ET confirmation que tu as bien noté sa demande
+  de ticket, qu'il pourra confirmer par oui/non)."""
 
     if escalation_allowed:
         base += """

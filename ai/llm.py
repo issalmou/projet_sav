@@ -19,9 +19,21 @@ class LLMService:
     """Envoie des messages au fournisseur LLM actif et retourne sa réponse."""
 
     def __init__(self, provider: LLMProvider | None = None) -> None:
-        # `provider` est injectable pour les tests (fournisseur factice) ;
-        # par défaut, le fournisseur actif est résolu via LLM_PROVIDER (.env).
-        self._provider = provider or LLMProviderFactory.create()
+        # `provider` est injectable pour les tests (fournisseur factice).
+        # Résolution paresseuse sinon : construire un `LLMService` (donc un
+        # `ChatService`, y compris pour ouvrir/lister des conversations qui
+        # n'appellent jamais le LLM) ne doit jamais échouer faute de clé API —
+        # seul un vrai appel au LLM doit lever `LLMProviderNotConfiguredError`.
+        self._explicit_provider = provider
+        self._lazy_provider: LLMProvider | None = None
+
+    @property
+    def _provider(self) -> LLMProvider:
+        if self._explicit_provider is not None:
+            return self._explicit_provider
+        if self._lazy_provider is None:
+            self._lazy_provider = LLMProviderFactory.create()
+        return self._lazy_provider
 
     async def generate_reply(self, messages: list[Message]) -> str:
         """Envoie l'historique de messages au LLM et retourne sa réponse texte."""

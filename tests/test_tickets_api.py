@@ -567,4 +567,73 @@ async def test_list_tickets_empty_is_empty_list(client, actors):
     assert response.json() == []
 
 
+# --- DELETE /tickets/{ticket_id} ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_ticket_without_token_is_401(client):
+    response = await client.delete(f"/api/v1/tickets/{uuid.uuid4()}")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_client_cannot_delete_a_ticket(client, actors, cleanup_tickets):
+    client_user, client_token = actors["client"]
+    _, responsable_token = actors["responsable"]
+    created = await _create_ticket_for(client, responsable_token, client_user.id)
+
+    response = await client.delete(f"/api/v1/tickets/{created['id']}", headers=_auth_headers(client_token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_technicien_cannot_delete_an_assigned_ticket(client, actors, cleanup_tickets):
+    client_user, _ = actors["client"]
+    _, responsable_token = actors["responsable"]
+    _, technicien_token = actors["technicien"]
+    created = await _create_ticket_for(client, responsable_token, client_user.id)
+
+    response = await client.delete(f"/api/v1/tickets/{created['id']}", headers=_auth_headers(technicien_token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("staff_key", ["admin", "responsable"])
+async def test_staff_can_delete_a_ticket(client, actors, cleanup_tickets, staff_key):
+    client_user, _ = actors["client"]
+    _, staff_token = actors[staff_key]
+    created = await _create_ticket_for(client, staff_token, client_user.id)
+
+    response = await client.delete(f"/api/v1/tickets/{created['id']}", headers=_auth_headers(staff_token))
+    assert response.status_code == 204
+
+    assert (
+        await client.get(f"/api/v1/tickets/{created['id']}", headers=_auth_headers(staff_token))
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_super_admin_can_delete_a_ticket(client, actors, cleanup_tickets):
+    client_user, _ = actors["client"]
+    _, responsable_token = actors["responsable"]
+    _, super_token = actors["super_admin"]
+    created = await _create_ticket_for(client, responsable_token, client_user.id)
+
+    response = await client.delete(f"/api/v1/tickets/{created['id']}", headers=_auth_headers(super_token))
+
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_unknown_ticket_as_staff_is_404(client, actors):
+    _, responsable_token = actors["responsable"]
+
+    response = await client.delete(f"/api/v1/tickets/{UNKNOWN_TICKET_ID}", headers=_auth_headers(responsable_token))
+
+    assert response.status_code == 404
+
+
 __all__: list[str] = []

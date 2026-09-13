@@ -98,6 +98,7 @@ async def search_docs(ctx: AgentContext, query: str) -> str:
 
     titles = sorted({c.title for c in chunks})
     ctx.conversation.search_performed = True
+    ctx.no_relevant_docs_found = not chunks
     ctx.session.add(ctx.conversation)
     _log_event(ctx, "search", {"query": query, "count": len(chunks), "titles": titles})
     await ctx.session.commit()
@@ -148,6 +149,19 @@ async def submit_diagnosis(ctx: AgentContext, cause: str, steps: list[str]) -> s
             "Le seuil de tentatives de diagnostic infructueuses est atteint : tu ne peux plus "
             "proposer de nouveau diagnostic toi-même. Appelle escalate_to_technician(reason) "
             "pour transmettre le dossier à un technicien."
+        )
+
+    if ctx.no_relevant_docs_found:
+        # Refusé ici, pas seulement via le gate (qui cesse d'exiger cet appel
+        # dans ce cas) : un LLM peut appeler l'outil de sa propre initiative
+        # même sans y être poussé, il ne doit jamais pouvoir fabriquer une
+        # cause ou des étapes sans aucune base documentaire réelle.
+        return (
+            "La dernière recherche documentaire n'a renvoyé aucun résultat pertinent pour ce "
+            "produit : tu ne peux pas construire de diagnostic sans base réelle, au risque "
+            "d'inventer une cause ou des étapes qui n'existent pas dans la base de connaissances. "
+            "Dis-le honnêtement au client (aucune information trouvée sur ce point précis), sans "
+            "rien inventer, et propose de créer un ticket si tu ne peux pas l'aider autrement."
         )
 
     clean_steps = _clean_steps(steps)
@@ -325,7 +339,7 @@ async def create_ticket(ctx: AgentContext, description: str) -> str:
 
 
 async def escalate_to_technician(ctx: AgentContext, reason: str) -> str:
-    """Chemin « échec du diagnostic » : crée automatiquement un ticket (CDC §17).
+    """Chemin « échec du diagnostic » : crée automatiquement un ticket.
 
     Autorisé UNIQUEMENT si le diagnostic a atteint le seuil d'échecs défini
     côté backend. Aucune confirmation client supplémentaire n'est requise.

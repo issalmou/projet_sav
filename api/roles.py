@@ -1,7 +1,6 @@
 """Routes de gestion des rôles applicatifs.
 
-Règles d'accès (cf. échanges de cadrage, tâche "Gestion des rôles + reset
-password" — pas une exigence explicite du CDC) :
+Règles d'accès aux rôles et au changement de mot de passe :
 - Lecture (`GET`) : staff (administrateur, responsable SAV) ou superuser.
   Le responsable SAV ne voit jamais le rôle `administrateur` (ni dans la
   liste, ni par accès direct à son id), pour l'empêcher de récupérer ce

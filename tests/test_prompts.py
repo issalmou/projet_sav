@@ -2,6 +2,7 @@
 import uuid
 
 from app.ai.agent.prompts import build_agent_system_prompt, build_diagnostic_recap
+from app.ai.agent.graph import _no_relevant_docs_reply
 from app.ai.prompts import build_title_prompt
 from app.models.conversation import Conversation
 from app.models.conversation_event import ConversationEvent
@@ -62,6 +63,13 @@ def test_agent_prompt_adapts_language():
     assert "Réponds en anglais" in build_agent_system_prompt(
         _product(), "en", awaiting_ticket_confirmation=False, awaiting_step_feedback=False, escalation_allowed=False
     )
+
+
+def test_no_relevant_docs_reply_adapts_language():
+    assert "I could not find" in _no_relevant_docs_reply("en")
+    assert "لم أجد" in _no_relevant_docs_reply("ar")
+    assert "Je n'ai pas trouvé" in _no_relevant_docs_reply("fr")
+    assert "Je n'ai pas trouvé" in _no_relevant_docs_reply("xx")
 
 
 def test_agent_prompt_step_feedback_block_conditional():

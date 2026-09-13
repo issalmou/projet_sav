@@ -146,11 +146,6 @@ async def _setup(session):
             UserCreate(email="demo.client@example.com", password="DemoPass1", role_id=role.id if role else None)
         )
 
-    # Bug corrigé (audit) : `Product.__table__.select().limit(1)` piochait une
-    # ligne PRODUIT QUELCONQUE (ex. laissée par une suite de tests e2e) et
-    # lisait à tort sa 1re colonne comme un id — ce produit démo est
-    # maintenant identifié explicitement par son nom, jamais par une ligne
-    # arbitraire de la table.
     result = await session.execute(select(Product).where(Product.name == "Pompe à chaleur Demo").limit(1))
     product = result.scalar_one_or_none()
     if product is None:

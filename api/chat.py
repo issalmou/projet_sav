@@ -121,9 +121,11 @@ async def list_conversations(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
 ):
-    """Liste les conversations de l'utilisateur courant, les plus récentes d'abord."""
+    """Liste les conversations visibles par l'utilisateur courant, les plus
+    récentes d'abord : les siennes pour un client, toutes pour le staff
+    (administrateur / responsable_sav) ou un superuser."""
 
-    return await chat_service.list_conversations(current_user.id)
+    return await chat_service.list_conversations(current_user)
 
 
 @router.get(
@@ -141,11 +143,15 @@ async def get_conversation(
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> ConversationDetail:
-    """Retourne une conversation avec son historique complet de messages."""
+    """Retourne une conversation avec son historique complet de messages.
+
+    Visible par son propriétaire, ou par le staff (administrateur /
+    responsable_sav) et un superuser, qui peuvent consulter n'importe quelle
+    conversation."""
 
     try:
-        conversation = await chat_service.get_conversation(conversation_id, current_user.id)
-        messages = await chat_service.get_history(conversation_id, current_user.id)
+        conversation = await chat_service.get_conversation(conversation_id, current_user, allow_staff_access=True)
+        messages = await chat_service.get_history(conversation_id, current_user, allow_staff_access=True)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 

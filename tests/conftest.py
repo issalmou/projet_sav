@@ -10,6 +10,7 @@ Lancer les tests depuis `backend/` avec `PYTHONPATH=.` :
 """
 import uuid
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -21,6 +22,22 @@ from app.schemas.user import UserCreate
 from app.services.role_service import RoleService
 from app.services.user_service import UserService
 from app.utils.constants import RoleName
+
+
+@pytest.fixture(autouse=True)
+def _no_real_embedding_warmup(monkeypatch):
+    """Empêche `ChatService.open_conversation` de déclencher un vrai chargement du
+    modèle d'embeddings en tâche de fond pendant les tests.
+
+    La boucle asyncio est partagée par toute la session (`asyncio_default_test_loop_scope
+    = session`) : sans ce stub, le premier test appelant réellement `open_conversation`
+    chargerait le modèle E5 (plusieurs secondes, centaines de Mo) en arrière-plan, au
+    hasard de l'ordre d'exécution — non pertinent pour la quasi-totalité des tests, et
+    aggravant la pression mémoire déjà connue sur cette machine. `test_embedding_warmup.py`
+    teste le module réel directement et n'est pas affecté par ce stub.
+    """
+
+    monkeypatch.setattr("app.services.chat_service.warm_embedding_model_in_background", lambda: None)
 
 
 @pytest_asyncio.fixture

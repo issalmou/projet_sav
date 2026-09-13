@@ -174,7 +174,8 @@ async def test_plain_answer_without_tools(db_session, agent_world):
 
     result = await _send(service, agent_world, "Bonjour")
 
-    assert result.message.content == "Bonjour, pouvez-vous préciser le problème rencontré ?"
+    assert result.message.content.startswith("Je n'ai pas trouvé cette information dans la documentation")
+    assert "préciser le symptôme" in result.message.content
     assert result.message.role == "assistant"
     assert result.ticket_id is None
 
@@ -196,6 +197,69 @@ async def test_agent_uses_search_docs_then_answers(db_session, agent_world):
     assert "bac papier" in result.message.content
     # le RAG a été filtré sur le produit de la conversation (source de vérité)
     assert retriever.received_product_ids == [agent_world["product"].id]
+
+
+@pytest.mark.asyncio
+async def test_agent_does_not_force_diagnosis_when_no_relevant_docs_found(db_session, agent_world):
+    """Base de connaissances vide sur ce point : le gate ne doit plus exiger
+    submit_diagnosis (il se refuserait de toute façon, cf. tools.submit_diagnosis)
+    — l'agent peut conclure directement par une réponse honnête, sans fabriquer
+    de cause ni d'étapes absentes de la documentation."""
+
+    service, _ = _service(
+        db_session,
+        [
+            LLMResult(tool_calls=(_tc("search_docs", query="bruit inhabituel qsdf"),)),
+            LLMResult(text="Je n'ai trouvé aucune information à ce sujet dans notre documentation."),
+        ],
+        # chunks omis : StubRetriever([]) par défaut -> aucun résultat pertinent
+    )
+
+    result = await _send(service, agent_world, "Mon produit fait un bruit qsdf")
+
+    assert result.message.content.startswith("Je n'ai pas trouvé cette information dans la documentation")
+    assert "préciser le symptôme" in result.message.content
+    assert "ticket" in result.message.content
+    assert "oui ou non" in result.message.content
+    assert result.ticket_id is None
+    await db_session.refresh(agent_world["conversation"])
+    assert agent_world["conversation"].awaiting_step_feedback is False
+    assert agent_world["conversation"].pending_ticket_confirmation is True
+
+
+@pytest.mark.asyncio
+async def test_agent_submit_diagnosis_attempt_ignored_when_no_relevant_docs_found(db_session, agent_world):
+    """Même si le LLM appelle quand même submit_diagnosis de sa propre
+    initiative après un search_docs infructueux, l'outil se refuse et aucun
+    diagnostic n'est enregistré (double verrou : gate + outil)."""
+
+    service, _ = _service(
+        db_session,
+        [
+            LLMResult(tool_calls=(_tc("search_docs", query="bruit inhabituel qsdf"),)),
+            LLMResult(tool_calls=(_tc("submit_diagnosis", cause="Cause inventée", steps=["Étape inventée"]),)),
+            LLMResult(text="Je n'ai trouvé aucune information à ce sujet dans notre documentation."),
+        ],
+    )
+
+    result = await _send(service, agent_world, "Mon produit fait un bruit qsdf")
+
+    assert result.message.content.startswith("Je n'ai pas trouvé cette information dans la documentation")
+    assert "préciser le symptôme" in result.message.content
+    assert "ticket" in result.message.content
+    assert "oui ou non" in result.message.content
+    await db_session.refresh(agent_world["conversation"])
+    assert agent_world["conversation"].awaiting_step_feedback is False
+    assert agent_world["conversation"].pending_ticket_confirmation is True
+    events = (
+        await db_session.execute(
+            select(ConversationEvent).where(
+                ConversationEvent.conversation_id == agent_world["conversation"].id,
+                ConversationEvent.event_type == "diagnosis",
+            )
+        )
+    ).scalars().all()
+    assert events == []
 
 
 @pytest.mark.asyncio
@@ -465,7 +529,7 @@ class _FakeConv:
 
 
 class _FakeGateCtx:
-    """Double minimal de AgentContext : `_gate_violation` ne lit que ces 5 attributs."""
+    """Double minimal de AgentContext : `_gate_violation` ne lit que ces 6 attributs."""
 
     def __init__(
         self,
@@ -476,6 +540,7 @@ class _FakeGateCtx:
         turn_started_awaiting_feedback=False,
         has_active_ticket=False,
         escalation_allowed=False,
+        no_relevant_docs_found=False,
     ):
         self.conversation = conv
         self.tool_trace = list(tool_trace)
@@ -483,6 +548,7 @@ class _FakeGateCtx:
         self.turn_started_awaiting_feedback = turn_started_awaiting_feedback
         self.has_active_ticket = has_active_ticket
         self.escalation_allowed = escalation_allowed
+        self.no_relevant_docs_found = no_relevant_docs_found
 
 
 def test_gate_requires_search_docs_before_any_final_answer():
@@ -570,6 +636,24 @@ def test_gate_still_requires_submit_diagnosis_without_active_ticket():
 
     ctx = _FakeGateCtx(conv=_FakeConv(search_performed=True), has_active_ticket=False)
     assert _gate_violation(ctx) == "submit_diagnosis"
+
+
+def test_gate_no_submit_diagnosis_needed_when_no_relevant_docs_found():
+    """Aucun résultat pertinent trouvé par search_docs ce tour : le gate ne
+    doit plus exiger submit_diagnosis (il se refuserait de toute façon), pour
+    laisser l'agent conclure honnêtement plutôt que d'inventer un diagnostic."""
+
+    ctx = _FakeGateCtx(conv=_FakeConv(search_performed=True), no_relevant_docs_found=True)
+    assert _gate_violation(ctx) is None
+
+
+def test_gate_waits_for_confirmation_when_no_relevant_docs_found_and_threshold_reached():
+    """Même au seuil, une recherche vide impose une confirmation avant ticket."""
+
+    ctx = _FakeGateCtx(
+        conv=_FakeConv(search_performed=True), escalation_allowed=True, no_relevant_docs_found=True
+    )
+    assert _gate_violation(ctx) is None
 
 
 def test_gate_forces_escalation_once_threshold_reached():

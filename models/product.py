@@ -29,8 +29,6 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     documents: Mapped[list["Document"]] = relationship(secondary="document_products", back_populates="products")
 
-    # Clients (User de rôle « client ») auxquels ce produit est rattaché, via
-    # la table d'association client_products. Rattachement géré par le staff.
     clients: Mapped[list["User"]] = relationship(
         secondary="client_products", back_populates="assigned_products"
     )

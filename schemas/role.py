@@ -13,7 +13,7 @@ class RoleBase(BaseModel):
     `name` est un `str` ici (pas `RoleName`) : la colonne `roles.name` n'est
     pas contrainte par un enum en base, et `RoleRead` (qui hérite de cette
     base) doit pouvoir représenter n'importe quelle ligne réellement stockée.
-    La contrainte aux 4 valeurs officielles du CDC s'applique uniquement en
+    La contrainte aux valeurs officielles s'applique uniquement en
     entrée, via `RoleCreate.name: RoleName` ci-dessous.
     """
 

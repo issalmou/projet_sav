@@ -1,7 +1,7 @@
 """Modèle Message.
 
 Un message porte soit la question de l'utilisateur, soit la réponse de
-l'agent IA, au sein d'une conversation (CDC §7, §9).
+    l'agent IA, au sein d'une conversation.
 """
 import uuid
 from typing import TYPE_CHECKING

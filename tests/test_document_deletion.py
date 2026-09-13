@@ -112,6 +112,26 @@ async def test_superuser_can_delete_document_created_by_someone_else(db_session,
 
 
 @pytest.mark.asyncio
+async def test_administrateur_can_delete_document_created_by_someone_else(db_session, sav_user, role_ids, tmp_path):
+    admin = await UserService(db_session).create_user(
+        UserCreate(email=f"admin.{uuid.uuid4().hex[:10]}@example.com", password="ValidPass1", role_id=role_ids["administrateur"])
+    )
+
+    document = _document_for(sav_user.id, tmp_path / "guide.txt")
+    db_session.add(document)
+    await db_session.flush()
+    document_id = document.id
+
+    service = DocumentService(db_session, vector_store=VectorStore(persist_directory=tmp_path / "chroma"))
+    await service.delete_document(document_id, admin)
+
+    assert await db_session.get(Document, document_id) is None
+
+    await db_session.delete(admin)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_delete_document_via_api_returns_204(client, db_session, actors, tmp_path, product):
     _, responsable_token = actors["responsable"]
 

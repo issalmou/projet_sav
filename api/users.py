@@ -28,7 +28,7 @@ from app.core.permissions import (
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, UserUpdate
 from app.services.role_service import RoleService
-from app.services.user_service import UserService
+from app.services.user_service import UserHasDependentsError, UserService
 from app.utils.constants import RoleName
 
 
@@ -210,6 +210,56 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
     return updated
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {
+            "description": (
+                "Rôle insuffisant, utilisateur ciblé hors du périmètre de l'appelant, "
+                "gestion d'un compte super admin sans l'être soi-même, ou auto-suppression."
+            )
+        },
+        404: {"description": "Utilisateur introuvable."},
+        409: {"description": "L'utilisateur a encore des tickets ou des documents à son nom."},
+    },
+)
+async def delete_user(
+    user_id: UUID,
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> None:
+    """Supprime un utilisateur (réservé à administrateur/responsable_sav, ou un superuser).
+
+    Un responsable SAV ne peut supprimer que les clients et techniciens
+    (même périmètre que `update_user`) ; un compte super admin ne peut être
+    supprimé que par un autre super admin. Personne ne peut se supprimer
+    soi-même (éviterait de se retrouver sans accès)."""
+
+    if current_user.id == user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot delete your own account")
+
+    target = await UserService(db).get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if target.is_superuser and not can_manage_superuser_flag(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only a superuser can manage a superuser account"
+        )
+
+    if not can_manage_role(current_user, get_role_name(target)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot manage this user")
+
+    try:
+        await UserService(db).delete_user(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except UserHasDependentsError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 __all__ = ["router"]

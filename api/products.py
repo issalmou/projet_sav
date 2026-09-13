@@ -1,11 +1,10 @@
-"""Routes de gestion des produits (CDC semaine 6 : API Produits).
+"""Routes de gestion des produits.
 
 Lecture ouverte à tout utilisateur authentifié (un client doit pouvoir
 identifier son produit pour créer un ticket/diagnostic). Gestion
 (création/modification/suppression) réservée au staff (`STAFF_ROLES`),
 comme pour les autres ressources de gestion de l'application
-(`api/users.py`) — décision de conception validée (tâche 2, semaine 6),
-pas une exigence explicite du CDC.
+(`api/users.py`).
 """
 from typing import Annotated
 from uuid import UUID
@@ -14,10 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db_session
-from app.core.permissions import STAFF_ROLES, require_roles
+from app.core.permissions import STAFF_ROLES, get_role_name, require_roles
 from app.models.user import User
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
+from app.services.client_product_service import ClientProductService
 from app.services.product_service import ProductService
+from app.utils.constants import RoleName
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -60,6 +61,12 @@ async def create_product(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
+def _is_plain_client(user: User) -> bool:
+    """Vrai si `user` est un client, sans le bypass staff/superuser."""
+
+    return not user.is_superuser and get_role_name(user) == RoleName.CLIENT.value
+
+
 @router.get(
     "/",
     response_model=list[ProductRead],
@@ -72,13 +79,19 @@ async def create_product(
 async def list_products(
     current_user: Annotated[User, Depends(get_current_user)],
     product_service: Annotated[ProductService, Depends(get_product_service)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     limit: int = 50,
     offset: int = 0,
 ) -> list[ProductRead]:
-    """Liste les produits (lecture ouverte à tout utilisateur authentifié).
+    """Liste les produits.
 
-    Pagination `limit`/`offset`, même pattern que `GET /users` (`api/users.py`).
+    Un client ne voit que les produits qui lui sont affectés (ses achats) ;
+    le staff et le technicien voient le catalogue complet (pagination
+    `limit`/`offset`, même pattern que `GET /users`, `api/users.py`).
     """
+
+    if _is_plain_client(current_user):
+        return await ClientProductService(db).list_products(current_user.id)
 
     return await product_service.list_products(limit=limit, offset=offset)
 
@@ -89,7 +102,7 @@ async def list_products(
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
-        403: {"description": "Ce compte utilisateur a été désactivé."},
+        403: {"description": "Ce compte utilisateur a été désactivé, ou (client) produit non affecté."},
         404: {"description": "Produit introuvable."},
     },
 )
@@ -97,13 +110,21 @@ async def get_product(
     product_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     product_service: Annotated[ProductService, Depends(get_product_service)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ProductRead:
-    """Retourne un produit par identifiant (lecture ouverte à tout utilisateur authentifié)."""
+    """Retourne un produit par identifiant.
+
+    Un client ne peut consulter qu'un produit qui lui est affecté."""
 
     try:
-        return await product_service.get_product(product_id)
+        product = await product_service.get_product(product_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    if _is_plain_client(current_user) and not await ClientProductService(db).is_assigned(current_user.id, product_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This product is not assigned to you")
+
+    return product
 
 
 @router.patch(

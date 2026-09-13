@@ -115,6 +115,47 @@ async def test_client_cannot_list_another_clients_products_is_403(client, actors
 
 
 @pytest.mark.asyncio
+async def test_technicien_without_ticket_cannot_list_client_products_is_403(client, actors):
+    client_user, _ = actors["client"]
+    technicien_user, technicien_token = actors["technicien"]
+
+    resp = await client.get(
+        f"/api/v1/clients/{client_user.id}/products", headers=_auth_headers(technicien_token)
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_technicien_with_assigned_ticket_can_list_client_products(client, actors, db_session, product):
+    from app.models.ticket import Ticket
+
+    client_user, _ = actors["client"]
+    technicien_user, technicien_token = actors["technicien"]
+    _, responsable_token = actors["responsable"]
+
+    await _assign(client, responsable_token, client_user.id, (str(product.id), 1))
+    ticket = Ticket(
+        title="Panne signalée",
+        description="Diagnostic à faire",
+        product_id=product.id,
+        client_id=client_user.id,
+        assigned_technician_id=technicien_user.id,
+        status="open",
+    )
+    db_session.add(ticket)
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/api/v1/clients/{client_user.id}/products", headers=_auth_headers(technicien_token)
+    )
+    assert resp.status_code == 200
+    assert [p["id"] for p in resp.json()] == [str(product.id)]
+
+    await db_session.delete(ticket)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_list_products_for_non_client_user_is_404(client, actors):
     technicien, _ = actors["technicien"]
     _, responsable_token = actors["responsable"]

@@ -35,10 +35,7 @@ class ClientProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     product_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # Quantité de ce produit affectée au client. >= 1 (contrainte CHECK) : une
-    # ligne d'affectation à 0 n'aurait pas de sens métier — pour « ne plus rien
-    # affecter », on supprime la ligne (DELETE). Réaffecter le même produit
-    # met à jour la quantité (upsert), sans jamais violer uq_client_product.
+    # Une quantité nulle est représentée par la suppression de l'affectation.
     qte: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     def __repr__(self) -> str:

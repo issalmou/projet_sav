@@ -49,7 +49,7 @@ async def documents_status() -> dict[str, str]:
     responses={
         400: {"description": "Format de fichier non supporté (attendu : PDF, DOCX ou TXT)."},
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
-        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
+        403: {"description": "Rôle insuffisant (réservé au staff (Responsable SAV / Administrateur))."},
         404: {"description": "Un des product_ids fournis est introuvable."},
         413: {"description": "Fichier dépassant la taille maximale autorisée."},
         422: {"description": "Métadonnées invalides (title, category, version, ou product_ids vide/absent)."},
@@ -65,7 +65,7 @@ async def upload_document(
     version: Annotated[str, Form()] = "1.0",
     product_ids: Annotated[list[UUID], Form()] = [],  # noqa: B006 (jamais muté ; valeur par défaut en lecture seule)
 ) -> DocumentRead:
-    """Dépose un document dans la base de connaissances (réservé au Responsable SAV).
+    """Dépose un document dans la base de connaissances (réservé au staff (Responsable SAV / Administrateur)).
 
     `product_ids` est obligatoire (au moins un produit existant) : le document
     est rattaché à ces produits pour permettre le filtrage RAG par produit.
@@ -99,32 +99,16 @@ async def upload_document(
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
-        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
+        403: {"description": "Rôle insuffisant (réservé au staff (Responsable SAV / Administrateur))."},
     },
 )
 async def list_documents(
     current_user: Annotated[User, Depends(require_document_manager)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> list[DocumentRead]:
-    """Liste les documents ajoutés par le Responsable SAV courant (tous pour un superuser)."""
+    """Liste les documents ajoutés par le Responsable SAV courant (tous pour un administrateur/superuser)."""
 
     return await DocumentService(db).list_documents(current_user)
-
-
-@router.post(
-    "/",
-    status_code=status.HTTP_501_NOT_IMPLEMENTED,
-    responses={
-        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
-        403: {"description": "Rôle insuffisant (réservé au Responsable SAV)."},
-    },
-)
-async def create_document_placeholder(
-    current_user: Annotated[User, Depends(require_document_manager)],
-) -> dict[str, str]:
-    """Réservé à un usage futur distinct de l'upload (ex: création sans fichier)."""
-
-    return {"detail": "This endpoint is not implemented; use POST /documents/upload"}
 
 
 @router.delete(
@@ -132,7 +116,7 @@ async def create_document_placeholder(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
-        403: {"description": "Document créé par un autre Responsable SAV (non superuser)."},
+        403: {"description": "Document créé par un autre Responsable SAV (non administrateur/superuser)."},
         404: {"description": "Document introuvable."},
     },
 )
@@ -143,7 +127,7 @@ async def delete_document(
 ) -> None:
     """Supprime un document de la base de connaissances.
 
-    Réservé au Responsable SAV qui l'a créé (ou à un superuser)."""
+    Réservé au Responsable SAV qui l'a créé, ou à un administrateur/superuser."""
 
     try:
         await DocumentService(db).delete_document(document_id, current_user)

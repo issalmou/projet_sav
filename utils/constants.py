@@ -16,7 +16,7 @@ class RoleName(str, Enum):
 
 
 class DocumentType(str, Enum):
-    """Formats de fichier acceptés pour l'upload documentaire (CDC semaine 4, tâche 3)."""
+    """Formats de fichier acceptés pour l'upload documentaire."""
 
     PDF = "pdf"
     DOCX = "docx"
@@ -24,7 +24,7 @@ class DocumentType(str, Enum):
 
 
 class DocumentCategory(str, Enum):
-    """Catégories de la base de connaissances (CDC §13 ; cf. dossiers knowledge_base/)."""
+    """Catégories de la base de connaissances."""
 
     FAQ = "faq"
     MANUALS = "manuals"
@@ -42,7 +42,7 @@ class DocumentStatus(str, Enum):
 
 
 class TicketStatus(str, Enum):
-    """Cycle de vie d'un ticket de support SAV (CDC semaine 5/6).
+    """Cycle de vie d'un ticket de support SAV.
 
     Valeurs synchronisées avec le CheckConstraint `status_valid` du modèle
     `Ticket` (déjà migré) ; cet enum sert à la validation côté schémas

@@ -1,11 +1,11 @@
-"""Routes de gestion des tickets SAV (CDC semaine 5/6).
+"""Routes de gestion des tickets SAV.
 
 Toutes les routes sont protégées par JWT (`get_current_user`), sauf
 `POST /` : réservée au staff (`require_roles(*STAFF_ROLES)`) depuis la
-correction RBAC de la semaine 6 — seul le Responsable SAV/Administrateur
+correction RBAC — seul le Responsable SAV/Administrateur
 (ou un superuser) peut créer un ticket manuellement, toujours au nom d'un
 client précis. Le reste des règles d'accès (visibilité, modification) est
-appliqué entièrement dans `TicketService` (tâche 5) — la route ne porte que
+appliqué entièrement dans `TicketService` — la route ne porte que
 la responsabilité HTTP (mapping des exceptions métier en codes de statut).
 """
 from typing import Annotated
@@ -64,7 +64,7 @@ async def create_ticket(
     current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
     ticket_service: Annotated[TicketService, Depends(get_ticket_service)],
 ) -> TicketRead:
-    """Crée un ticket au nom d'un client précis (réservé au staff, correction RBAC semaine 6)."""
+    """Crée un ticket au nom d'un client précis, réservé au staff."""
 
     try:
         return await ticket_service.create_ticket_for_client(current_user, payload)
@@ -158,6 +158,30 @@ async def update_ticket(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except InvalidTechnicianRoleError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.delete(
+    "/{ticket_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Rôle insuffisant (réservé à administrateur/responsable_sav)."},
+        404: {"description": "Ticket introuvable."},
+    },
+)
+async def delete_ticket(
+    ticket_id: UUID,
+    current_user: Annotated[User, Depends(require_roles(*STAFF_ROLES))],
+    ticket_service: Annotated[TicketService, Depends(get_ticket_service)],
+) -> None:
+    """Supprime un ticket (réservé à administrateur/responsable_sav, ou un superuser)."""
+
+    try:
+        await ticket_service.delete_ticket(ticket_id, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except TicketPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
 
 __all__ = ["router", "get_ticket_service"]

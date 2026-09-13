@@ -9,9 +9,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
+from app.models.document import Document
 from app.models.role import Role
+from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
+
+
+class UserHasDependentsError(Exception):
+    """L'utilisateur a des tickets (en tant que client) ou des documents à son
+    nom : sa suppression est bloquée en base (`ondelete="RESTRICT"`, cf.
+    `models.ticket.Ticket.client_id` / `models.document.Document.created_by_id`)
+    pour préserver l'historique — jamais un simple 500 d'IntegrityError.
+    """
 
 
 class UserService:
@@ -71,7 +81,6 @@ class UserService:
         user = await self.get_user_by_id(user_id)
         if user is None:
             return None
-        #si un utilisateur veut modifier son email
         if data.email is not None and data.email != user.email:
             if await self.get_user_by_email(data.email) is not None:
                 raise ValueError("Email already registered")
@@ -87,5 +96,35 @@ class UserService:
         await self.session.refresh(user)
         return user
 
+    async def delete_user(self, user_id: UUID) -> None:
+        """Supprime un utilisateur. Lève `ValueError` (404) s'il n'existe pas.
 
-__all__ = ["UserService"]
+        Ses conversations et affectations produit sont supprimées en cascade
+        (`ondelete="CASCADE"`). En revanche, un ticket dont il est le client ou
+        un document qu'il a créé bloquent la suppression en base
+        (`ondelete="RESTRICT"`, historique préservé) : vérifié ici pour
+        lever `UserHasDependentsError` (409) plutôt qu'une `IntegrityError`
+        brute — même principe que `RoleService.delete_role` (`RoleInUseError`).
+        """
+
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            raise ValueError("User not found")
+
+        has_ticket = (
+            await self.session.execute(select(Ticket.id).where(Ticket.client_id == user_id).limit(1))
+        ).scalar_one_or_none()
+        if has_ticket is not None:
+            raise UserHasDependentsError("User still has tickets and cannot be deleted")
+
+        has_document = (
+            await self.session.execute(select(Document.id).where(Document.created_by_id == user_id).limit(1))
+        ).scalar_one_or_none()
+        if has_document is not None:
+            raise UserHasDependentsError("User still has documents and cannot be deleted")
+
+        await self.session.delete(user)
+        await self.session.commit()
+
+
+__all__ = ["UserHasDependentsError", "UserService"]

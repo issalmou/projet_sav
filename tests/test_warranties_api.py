@@ -43,7 +43,29 @@ async def test_get_warranty_without_token_is_401(client):
 
 
 @pytest.mark.asyncio
-async def test_client_can_read_warranty_of_existing_product(client, actors, cleanup_products):
+async def test_client_can_read_warranty_of_assigned_product(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    client_user, client_token = actors["client"]
+    created = await client.post(
+        "/api/v1/products/", json=_product_payload(), headers=_auth_headers(responsable_token)
+    )
+    product_id = created.json()["id"]
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1}]},
+        headers=_auth_headers(responsable_token),
+    )
+
+    response = await client.get(f"/api/v1/warranties/{product_id}", headers=_auth_headers(client_token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == product_id
+    assert body["warranty_months"] == 24
+
+
+@pytest.mark.asyncio
+async def test_client_cannot_read_warranty_of_unassigned_product_is_403(client, actors, cleanup_products):
     _, responsable_token = actors["responsable"]
     _, client_token = actors["client"]
     created = await client.post(
@@ -53,10 +75,20 @@ async def test_client_can_read_warranty_of_existing_product(client, actors, clea
 
     response = await client.get(f"/api/v1/warranties/{product_id}", headers=_auth_headers(client_token))
 
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_staff_can_read_warranty_of_any_product(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    created = await client.post(
+        "/api/v1/products/", json=_product_payload(), headers=_auth_headers(responsable_token)
+    )
+    product_id = created.json()["id"]
+
+    response = await client.get(f"/api/v1/warranties/{product_id}", headers=_auth_headers(responsable_token))
+
     assert response.status_code == 200
-    body = response.json()
-    assert body["id"] == product_id
-    assert body["warranty_months"] == 24
 
 
 @pytest.mark.asyncio

@@ -25,11 +25,7 @@ if TYPE_CHECKING:
     from app.models.conversation import Conversation
 
 
-# Types d'événements consignés. Volontairement fermé (CheckConstraint) :
-# ajouter un type = une migration, pas une valeur libre venue du LLM.
-# "new_issue" marque la frontière entre deux incidents successifs sur la
-# même conversation, posée par `start_new_issue` ; voir
-# `events_since_last_new_issue` pour la lecture scopée au cycle en cours.
+    # Ajouter un type d'événement nécessite une migration.
 EVENT_TYPES = ("search", "diagnosis", "feedback", "escalation", "ticket", "new_issue")
 
 
@@ -48,8 +44,6 @@ class ConversationEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    # Contenu libre selon le type (query + titres de docs, cause + étapes,
-    # resolved + n° de tentative, raison d'escalade, id de ticket…).
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
     conversation: Mapped["Conversation"] = relationship(back_populates="events")

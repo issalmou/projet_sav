@@ -34,11 +34,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     preferred_language: Mapped[str] = mapped_column(String(5), default="fr", nullable=False)
 
-    # Traçabilité du consentement (RGPD)
     consent_given_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Tous les tokens (access et refresh) émis avant cette date sont invalides.
-    # Mis à jour par /auth/logout pour révoquer immédiatement les tokens en circulation.
+    # Révoque les tokens émis avant cette date.
     tokens_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     role_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -46,11 +44,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     role: Mapped["Role | None"] = relationship(back_populates="users", lazy="joined")
 
-    # Produits rattachés à ce compte (pertinent uniquement pour le rôle
-    # « client »). Rattachement géré par le staff via la table d'association
-    # client_products. Chargé explicitement par les requêtes qui en ont besoin
-    # (selectinload / refresh), jamais en eager par défaut pour ne pas alourdir
-    # get_current_user, appelé à chaque requête authentifiée.
+    # Produits affectés au client, chargés explicitement par les requêtes.
     assigned_products: Mapped[list["Product"]] = relationship(
         secondary="client_products", back_populates="clients"
     )

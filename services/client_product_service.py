@@ -77,7 +77,6 @@ class ClientProductService:
 
         await self._get_client_or_raise(client_id)
 
-        # dédup par product_id, dernière quantité gagnante, ordre conservé
         merged: dict[UUID, int] = {}
         for item in items:
             merged[item.product_id] = item.qte
@@ -130,7 +129,6 @@ class ClientProductService:
 
         await self._get_client_or_raise(client_id, for_update=True)
 
-        # dédup par product_id, dernière quantité gagnante (même règle qu'assign_products)
         merged: dict[UUID, int] = {}
         for item in items:
             merged[item.product_id] = item.qte
@@ -145,7 +143,6 @@ class ClientProductService:
                     "Unknown product id(s): " + ", ".join(str(pid) for pid in missing)
                 )
 
-        # Retire les affectations existantes absentes de l'état final demandé.
         delete_stmt = sa_delete(ClientProduct).where(ClientProduct.user_id == client_id)
         if product_ids:
             delete_stmt = delete_stmt.where(ClientProduct.product_id.not_in(product_ids))
@@ -208,9 +205,7 @@ class ClientProductService:
 
     async def _get_client_or_raise(self, client_id: UUID, *, for_update: bool = False) -> User:
         if for_update:
-            # `of=User` : `User.role` est en LEFT OUTER JOIN (role_id nullable) —
-            # PostgreSQL refuse FOR UPDATE sur la table nullable d'un outer join
-            # sans restreindre explicitement quelle table verrouiller.
+            # Verrouiller User évite de verrouiller la jointure nullable avec PostgreSQL.
             result = await self.session.execute(
                 select(User).where(User.id == client_id).with_for_update(of=User)
             )

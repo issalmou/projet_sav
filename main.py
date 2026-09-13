@@ -39,10 +39,6 @@ app = FastAPI(
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,
-    # Durcissement production (point 3 de l'audit) : /docs, /redoc et le
-    # schéma OpenAPI brut restent actifs en développement/test (défaut
-    # APP_ENV=development), mais sont désactivés dès APP_ENV=production —
-    # ne pas exposer la documentation interactive de l'API publiquement.
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None if settings.is_production else "/redoc",
     openapi_url=None if settings.is_production else "/openapi.json",
@@ -50,9 +46,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    # En dev (CORS_ALLOW_ALL), on reflète n'importe quelle origine via un regex
-    # plutôt que allow_origins=["*"], afin de rester compatible avec
-    # allow_credentials=True. En production, seule la liste blanche s'applique.
+    # Le regex permet les credentials en mode permissif.
     allow_origins=[] if settings.cors_allow_all else settings.cors_origins,
     allow_origin_regex=".*" if settings.cors_allow_all else None,
     allow_credentials=True,

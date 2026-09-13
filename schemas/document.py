@@ -1,4 +1,4 @@
-"""Schémas Pydantic pour les documents (base de connaissances / RAG, semaine 4)."""
+"""Schémas Pydantic pour les documents."""
 from datetime import datetime
 from uuid import UUID
 

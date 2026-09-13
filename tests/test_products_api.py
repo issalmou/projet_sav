@@ -71,26 +71,55 @@ async def test_delete_product_without_token_is_401(client):
     assert response.status_code == 401
 
 
-# --- Lecture : ouverte à tout utilisateur authentifié -----------------------
+# --- Lecture : ouverte à tout utilisateur authentifié, sauf le client -------
+# scopé à ses propres produits (achetés / affectés via `client_products`).
 
 
 @pytest.mark.asyncio
-async def test_client_can_list_products(client, actors, cleanup_products):
-    _, client_token = actors["client"]
-    await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(actors["responsable"][1]))
+async def test_staff_can_list_all_products(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
 
-    response = await client.get("/api/v1/products/", headers=_auth_headers(client_token))
+    response = await client.get("/api/v1/products/", headers=_auth_headers(responsable_token))
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
 
 @pytest.mark.asyncio
-async def test_client_can_get_existing_product(client, actors, cleanup_products):
+async def test_client_list_products_is_scoped_to_assigned_products(client, actors, cleanup_products):
     _, responsable_token = actors["responsable"]
-    _, client_token = actors["client"]
+    client_user, client_token = actors["client"]
+    assigned = await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
+    assigned_id = assigned.json()["id"]
+    not_assigned = await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
+    not_assigned_id = not_assigned.json()["id"]
+
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": assigned_id, "qte": 1}]},
+        headers=_auth_headers(responsable_token),
+    )
+
+    response = await client.get("/api/v1/products/", headers=_auth_headers(client_token))
+
+    assert response.status_code == 200
+    listed_ids = {item["id"] for item in response.json()}
+    assert assigned_id in listed_ids
+    assert not_assigned_id not in listed_ids
+
+
+@pytest.mark.asyncio
+async def test_client_can_get_assigned_product(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    client_user, client_token = actors["client"]
     created = await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
     product_id = created.json()["id"]
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1}]},
+        headers=_auth_headers(responsable_token),
+    )
 
     response = await client.get(f"/api/v1/products/{product_id}", headers=_auth_headers(client_token))
 
@@ -99,7 +128,41 @@ async def test_client_can_get_existing_product(client, actors, cleanup_products)
 
 
 @pytest.mark.asyncio
+async def test_client_cannot_get_unassigned_product_is_403(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    _, client_token = actors["client"]
+    created = await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
+    product_id = created.json()["id"]
+
+    response = await client.get(f"/api/v1/products/{product_id}", headers=_auth_headers(client_token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_staff_can_get_any_product(client, actors, cleanup_products):
+    _, responsable_token = actors["responsable"]
+    created = await client.post("/api/v1/products/", json=_payload(), headers=_auth_headers(responsable_token))
+    product_id = created.json()["id"]
+
+    response = await client.get(f"/api/v1/products/{product_id}", headers=_auth_headers(responsable_token))
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_get_unknown_product_is_404(client, actors):
+    _, responsable_token = actors["responsable"]
+
+    response = await client.get(f"/api/v1/products/{UNKNOWN_PRODUCT_ID}", headers=_auth_headers(responsable_token))
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_unknown_product_as_client_is_404_not_403(client, actors):
+    """Un produit inexistant reste un 404 pour un client, jamais un 403 (pas de fuite d'info)."""
+
     _, client_token = actors["client"]
 
     response = await client.get(f"/api/v1/products/{UNKNOWN_PRODUCT_ID}", headers=_auth_headers(client_token))

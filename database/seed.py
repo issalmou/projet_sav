@@ -6,6 +6,7 @@ bord (idempotent).
 """
 import asyncio
 
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -27,7 +28,7 @@ ROLE_DESCRIPTIONS: dict[RoleName, str] = {
 
 
 async def seed_roles() -> None:
-    """Crée les rôles officiels du CDC s'ils n'existent pas déjà."""
+    """Crée les rôles officiels s'ils n'existent pas déjà."""
 
     async with AsyncSessionLocal() as session:
         service = RoleService(session)
@@ -47,11 +48,7 @@ async def seed_first_admin() -> None:
     """
 
     async with AsyncSessionLocal() as session:
-        # `.scalars().first()` et non `.scalar_one_or_none()` : ceci est une
-        # verification d'existence ("au moins un superuser existe deja ?"),
-        # pas une lecture par cle unique -- is_superuser=True n'a aucune
-        # contrainte d'unicite (plusieurs administrateurs peuvent legitimement
-        # exister), donc plusieurs lignes sont un cas normal, pas une erreur.
+        # Plusieurs superusers sont valides : on vérifie seulement l'existence.
         existing = await session.execute(select(User).where(User.is_superuser.is_(True)))
         if existing.scalars().first() is not None:
             return
@@ -62,14 +59,19 @@ async def seed_first_admin() -> None:
 
         admin_role = await RoleService(session).get_role_by_name(RoleName.ADMINISTRATEUR.value)
 
-        await UserService(session).create_user(
-            UserCreate(
+        try:
+            payload = UserCreate(
                 email=settings.FIRST_ADMIN_EMAIL,
                 password=settings.FIRST_ADMIN_PASSWORD,
                 is_superuser=True,
                 role_id=admin_role.id if admin_role else None,
             )
-        )
+        except ValidationError as exc:
+            # Une configuration invalide ne doit pas bloquer le démarrage de l'API.
+            print(f"FIRST_ADMIN_EMAIL / FIRST_ADMIN_PASSWORD invalide(s), super admin non créé : {exc}")
+            return
+
+        await UserService(session).create_user(payload)
         print(f"Super admin créé : {settings.FIRST_ADMIN_EMAIL}")
 
 

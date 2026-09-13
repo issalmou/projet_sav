@@ -12,8 +12,7 @@ from jose import JWTError, jwt
 from app.core.config import settings
 
 
-# bcrypt n'accepte que 72 octets : au-delà, le surplus est ignoré (comportement
-# standard de bcrypt, déjà appliqué silencieusement par les anciennes versions).
+# bcrypt ne traite que les 72 premiers octets.
 _BCRYPT_MAX_BYTES = 72
 
 
@@ -36,10 +35,7 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None, to
 
     issued_at = datetime.now(timezone.utc)
     expire = issued_at + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
-    # "iat" est passé en timestamp flottant (et non en datetime) pour conserver
-    # la précision à la microseconde : jose tronque les datetime à la seconde
-    # via utctimetuple(), ce qui suffit pour "exp" mais casse la comparaison
-    # fine avec User.tokens_revoked_at utilisée par la révocation au logout.
+    # Le timestamp conserve la précision nécessaire à la révocation des tokens.
     payload: dict[str, Any] = {"sub": subject, "exp": expire, "iat": issued_at.timestamp(), "type": token_type}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

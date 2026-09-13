@@ -17,11 +17,12 @@ from app.ai.rag.vector_store import VectorStore
 from app.core.config import settings
 from app.core.logger import logger
 from app.database.base import utcnow
+from app.core.permissions import get_role_name
 from app.models.document import Document, DocumentProduct
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.document import DocumentUploadMetadata
-from app.utils.constants import DocumentType
+from app.utils.constants import DocumentType, RoleName
 
 
 class UnsupportedFileTypeError(ValueError):
@@ -57,6 +58,12 @@ class DocumentIndexingError(Exception):
     """
 
 
+def _has_full_document_access(user: User) -> bool:
+    """Vrai si `user` voit/gère tous les documents, pas seulement les siens."""
+
+    return user.is_superuser or get_role_name(user) == RoleName.ADMINISTRATEUR.value
+
+
 class DocumentService:
     """Orchestrateur métier pour les documents."""
 
@@ -74,10 +81,10 @@ class DocumentService:
         self._vector_store = vector_store
 
     async def list_documents(self, current_user: User) -> list[Document]:
-        """Liste les documents du Responsable SAV courant (tous les documents pour un superuser)."""
+        """Liste les documents du Responsable SAV courant (tous les documents pour un administrateur/superuser)."""
 
         query = select(Document).options(selectinload(Document.created_by)).order_by(Document.created_at.desc())
-        if not current_user.is_superuser:
+        if not _has_full_document_access(current_user):
             query = query.where(Document.created_by_id == current_user.id)
 
         result = await self.session.execute(query)
@@ -123,9 +130,7 @@ class DocumentService:
             products=products,
         )
         self.session.add(document)
-        # flush (pas commit) : alloue document.id et écrit les lignes document_products dans la
-        # transaction en cours, sans la valider — index_document() en a besoin (product_ids,
-        # upsert VectorStore), mais un rollback classique reste possible tant que rien n'est commit.
+        # Le flush fournit les identifiants tout en gardant le rollback possible.
         await self.session.flush()
         document_id = document.id  # capturé avant un éventuel rollback (qui expire l'objet)
 
@@ -230,18 +235,18 @@ class DocumentService:
     async def delete_document(self, document_id: UUID, current_user: User) -> None:
         """Supprime un document : ligne PostgreSQL, chunks ChromaDB, fichier physique.
 
-        Chaque Responsable SAV ne peut supprimer que les documents qu'il a
-        lui-même ajoutés (`created_by_id`), sauf superuser qui peut tout
-        supprimer — comme pour les autres capacités de gestion des comptes
-        déjà en place (`can_manage_role`). Les associations `DocumentProduct`
-        sont supprimées en cascade par la base (`ondelete="CASCADE"`).
+        Un Responsable SAV ne peut supprimer que les documents qu'il a
+        lui-même ajoutés (`created_by_id`) ; un administrateur ou un
+        superuser peut supprimer n'importe quel document. Les associations
+        `DocumentProduct` sont supprimées en cascade par la base
+        (`ondelete="CASCADE"`).
         """
 
         document = await self.session.get(Document, document_id)
         if document is None:
             raise ValueError("Document not found")
 
-        if document.created_by_id != current_user.id and not current_user.is_superuser:
+        if document.created_by_id != current_user.id and not _has_full_document_access(current_user):
             raise DocumentPermissionError("You can only delete documents you created")
 
         file_path = Path(document.file_path)

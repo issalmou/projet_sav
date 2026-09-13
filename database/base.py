@@ -42,7 +42,7 @@ class UUIDPrimaryKeyMixin:
 
 
 class TimestampMixin:
-    """Horodatage de création / mise à jour, utile pour l'audit RGPD et le debug."""
+    """Horodatage de création et de mise à jour."""
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

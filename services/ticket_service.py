@@ -23,8 +23,7 @@ _TICKET_RELATIONSHIPS = (
     selectinload(Ticket.product),
 )
 
-# Décision de conception (pas une exigence du CDC) : "closed" est le seul
-# statut terminal ; "resolved" reste considéré comme actif.
+    # Seul "closed" est terminal ; "resolved" reste actif.
 _TERMINAL_TICKET_STATUSES = (TicketStatus.CLOSED.value,)
 
 
@@ -91,7 +90,7 @@ class TicketService:
     async def create_ticket_for_client(self, staff_user: User, data: TicketCreate) -> Ticket:
         """Création manuelle par le staff, au nom du client `data.client_id`.
 
-        Décision de conception (pas une exigence du CDC) : seul le staff peut
+        Seul le staff peut
         créer un ticket manuellement, toujours au nom d'un client précis —
         jamais pour lui-même. Vérifié ici en plus de la route (défense en
         profondeur) : `client_id` doit avoir le rôle `client`.
@@ -214,6 +213,23 @@ class TicketService:
         await self.session.refresh(ticket, attribute_names=["client", "assigned_technician", "product"])
         return ticket
 
+    async def delete_ticket(self, ticket_id: UUID, user: User) -> None:
+        """Supprime un ticket. Réservé au staff (`STAFF_ROLES`) ou à un superuser.
+
+        Lève `ValueError` (404) si `user` n'a même pas le droit de voir ce
+        ticket, `TicketPermissionError` (403) s'il le voit mais n'a pas le
+        droit de le supprimer — même principe que `update_ticket`. Vérifié ici
+        en plus de la route (défense en profondeur, même style que
+        `create_ticket_for_client`)."""
+
+        ticket = await self._get_visible_ticket_or_raise(ticket_id, user)
+
+        if not _is_staff_or_superuser(user):
+            raise TicketPermissionError("Only staff can delete a ticket")
+
+        await self.session.delete(ticket)
+        await self.session.commit()
+
     async def _ensure_is_technician(self, technician_id: UUID) -> None:
         """Vérifie que `technician_id` référence un utilisateur existant ayant le rôle technicien.
 
@@ -301,7 +317,7 @@ def _is_staff_or_superuser(user: User) -> bool:
 def _can_reassign(user: User) -> bool:
     """Seul le staff (`STAFF_ROLES`) ou un superuser peut modifier `assigned_technician_id`.
 
-    Décision de conception (pas une exigence du CDC) : la réassignation est
+    La réassignation est
     une action de gestion, jamais confiée au technicien concerné lui-même —
     même principe que `User.role_id` (`core/permissions.py`).
     """
