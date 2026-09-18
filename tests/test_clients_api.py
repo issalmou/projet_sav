@@ -1,8 +1,10 @@
 """Tests HTTP de api/clients.py : affectation produit ↔ client (avec quantité) + RBAC.
 
 « Client » = User de rôle « client ». Ces routes n'affectent que des produits
-EXISTANTS ; aucune création de produit ici. Contrat POST :
-`{"items": [{"product_id": "...", "qte": N}]}` (`qte` >= 1, défaut 1).
+EXISTANTS ; aucune création de produit ici.
+Contrat POST :
+`{"items": [{"product_id": "...", "qte": N, "purchase_date": "YYYY-MM-DD"}]}`.
+
 """
 import asyncio
 import uuid
@@ -37,7 +39,7 @@ def _items(*pairs):
     """(product_id, qte) -> payload items ; qte omise si None."""
     out = []
     for pid, qte in pairs:
-        item = {"product_id": pid}
+        item = {"product_id": pid, "purchase_date": "2026-01-10"}
         if qte is not None:
             item["qte"] = qte
         out.append(item)
@@ -188,6 +190,25 @@ async def test_staff_can_assign_products(client, actors, cleanup_products, actor
     assert resp.status_code == 200
     by_id = {p["id"]: p["qte"] for p in resp.json()}
     assert by_id == {p1: 2, p2: 1}  # p2 : qte par défaut
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor_key", ["responsable", "admin"])
+async def test_staff_can_assign_purchase_date(client, actors, cleanup_products, actor_key):
+    client_user, _ = actors["client"]
+    _, staff_token = actors[actor_key]
+    product_id = await _make_product(client, staff_token)
+
+    resp = await _assign(client, staff_token, client_user.id, (product_id, 1))
+    assert resp.status_code == 200
+
+    resp = await client.put(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1, "purchase_date": "2026-01-10"}]},
+        headers=_auth_headers(staff_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()[0]["purchase_date"] == "2026-01-10"
 
 
 @pytest.mark.asyncio
@@ -639,4 +660,101 @@ async def test_non_staff_cannot_unassign_product_is_403(client, actors, cleanup_
     assert resp.status_code == 403
 
 
+# --- Informations de garantie dans la liste des produits client ------------
+
+
+@pytest.mark.asyncio
+async def test_client_products_contain_active_warranty_information(client, actors, cleanup_products):
+    """Vérifie que la liste des produits du client inclut les informations de garantie applicables."""
+    client_user, client_token = actors["client"]
+    _, responsable_token = actors["responsable"]
+
+    # Produit avec 24 mois de garantie
+    product_id = await _make_product(client, responsable_token, warranty_months=24)
+    # Affecté avec date d'achat récente (2026-01-10) -> garantie jusqu'à 2028-01-10
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1, "purchase_date": "2026-01-10"}]},
+        headers=_auth_headers(responsable_token),
+    )
+
+    # 1. Via GET /clients/{client_id}/products
+    resp = await client.get(
+        f"/api/v1/clients/{client_user.id}/products",
+        headers=_auth_headers(client_token),
+    )
+    assert resp.status_code == 200
+    products = resp.json()
+    assert len(products) == 1
+    prod = products[0]
+    assert prod["id"] == product_id
+    assert prod["warranty_months"] == 24
+    assert prod["purchase_date"] == "2026-01-10"
+    assert prod["warranty_end_date"] == "2028-01-10"
+    assert prod["warranty_status"] == "ACTIVE"
+
+    # 2. Via GET /products/ (vue client scopée)
+    resp_prod = await client.get("/api/v1/products/", headers=_auth_headers(client_token))
+    assert resp_prod.status_code == 200
+    client_prods = resp_prod.json()
+    assert len(client_prods) == 1
+    c_prod = client_prods[0]
+    assert c_prod["id"] == product_id
+    assert c_prod["warranty_months"] == 24
+    assert c_prod["purchase_date"] == "2026-01-10"
+    assert c_prod["warranty_end_date"] == "2028-01-10"
+    assert c_prod["warranty_status"] == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_client_products_contain_expired_warranty_information(client, actors, cleanup_products):
+    """Vérifie que pour un achat ancien, le statut de garantie est EXPIRED."""
+    client_user, client_token = actors["client"]
+    _, responsable_token = actors["responsable"]
+
+    product_id = await _make_product(client, responsable_token, warranty_months=12)
+    # Achat en 2020 avec 12 mois -> expiré en 2021
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1, "purchase_date": "2020-01-01"}]},
+        headers=_auth_headers(responsable_token),
+    )
+
+    resp = await client.get(
+        f"/api/v1/clients/{client_user.id}/products",
+        headers=_auth_headers(client_token),
+    )
+    assert resp.status_code == 200
+    prod = resp.json()[0]
+    assert prod["warranty_months"] == 12
+    assert prod["purchase_date"] == "2020-01-01"
+    assert prod["warranty_end_date"] == "2021-01-01"
+    assert prod["warranty_status"] == "EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_client_products_without_warranty_months_has_unknown_status(client, actors, cleanup_products):
+    """Vérifie que pour un produit sans warranty_months défini, warranty_status est UNKNOWN."""
+    client_user, client_token = actors["client"]
+    _, responsable_token = actors["responsable"]
+
+    product_id = await _make_product(client, responsable_token, warranty_months=None)
+    await client.post(
+        f"/api/v1/clients/{client_user.id}/products",
+        json={"items": [{"product_id": product_id, "qte": 1, "purchase_date": "2026-01-10"}]},
+        headers=_auth_headers(responsable_token),
+    )
+
+    resp = await client.get(
+        f"/api/v1/clients/{client_user.id}/products",
+        headers=_auth_headers(client_token),
+    )
+    assert resp.status_code == 200
+    prod = resp.json()[0]
+    assert prod["warranty_months"] is None
+    assert prod["warranty_end_date"] is None
+    assert prod["warranty_status"] == "UNKNOWN"
+
+
 __all__: list[str] = []
+

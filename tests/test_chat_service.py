@@ -4,6 +4,7 @@ L'orchestration de l'agent (`handle_message`) est testée dans
 `test_chat_handle_message.py` ; l'agent lui-même dans `test_agent.py`.
 """
 import uuid
+from datetime import date
 
 import pytest
 import pytest_asyncio
@@ -74,7 +75,7 @@ async def test_client_role_can_open_conversation_on_assigned_product(db_session,
         UserCreate(email=unique_email("chatclient2"), password="ValidPass1", role_id=role_ids["client"])
     )
     await ClientProductService(db_session).assign_products(
-        client.id, [ClientProductItem(product_id=product_id, qte=1)]
+        client.id, [ClientProductItem(product_id=product_id, qte=1, purchase_date=date(2026, 1, 10))]
     )
 
     conversation = await _svc(db_session).open_conversation(client, product_id)
@@ -133,7 +134,7 @@ async def test_staff_sees_all_conversations_client_sees_only_own(
     )
     for user in (client_a, client_b):
         await ClientProductService(db_session).assign_products(
-            user.id, [ClientProductItem(product_id=product_id, qte=1)]
+            user.id, [ClientProductItem(product_id=product_id, qte=1, purchase_date=date(2026, 1, 10))]
         )
 
     service = _svc(db_session)

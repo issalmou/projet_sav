@@ -10,6 +10,7 @@ Règles d'accès (appliquées dans `api/clients.py`, RBAC existant) :
 - consulter           : le client lui-même, ou le staff.
 """
 import uuid
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import delete as sa_delete
@@ -23,6 +24,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.schemas.client_product import ClientProductItem, ClientProductRead
 from app.schemas.product import ProductRead
+from app.services.warranty_service import _add_months
 from app.utils.constants import RoleName
 
 
@@ -54,12 +56,12 @@ class ClientProductService:
         await self._get_client_or_raise(client_id)
 
         result = await self.session.execute(
-            select(Product, ClientProduct.qte)
+            select(Product, ClientProduct.qte, ClientProduct.purchase_date)
             .join(ClientProduct, ClientProduct.product_id == Product.id)
             .where(ClientProduct.user_id == client_id)
             .order_by(Product.name)
         )
-        return [_to_read(product, qte) for product, qte in result.all()]
+        return [_to_read(product, qte, purchase_date) for product, qte, purchase_date in result.all()]
 
     async def assign_products(
         self, client_id: UUID, items: list[ClientProductItem]
@@ -77,9 +79,9 @@ class ClientProductService:
 
         await self._get_client_or_raise(client_id)
 
-        merged: dict[UUID, int] = {}
+        merged: dict[UUID, tuple[int, date | None]] = {}
         for item in items:
-            merged[item.product_id] = item.qte
+            merged[item.product_id] = (item.qte, item.purchase_date)
         product_ids = list(merged.keys())
 
         found = await self.session.execute(select(Product.id).where(Product.id.in_(product_ids)))
@@ -97,15 +99,21 @@ class ClientProductService:
                 "user_id": client_id,
                 "product_id": pid,
                 "qte": qte,
+                "purchase_date": purchase_date,
+                "purchase_date": purchase_date or date.today(),
                 "created_at": now,
                 "updated_at": now,
             }
-            for pid, qte in merged.items()
+            for pid, (qte, purchase_date) in merged.items()
         ]
         stmt = pg_insert(ClientProduct.__table__).values(rows)
         stmt = stmt.on_conflict_do_update(
             index_elements=["user_id", "product_id"],
-            set_={"qte": stmt.excluded.qte, "updated_at": stmt.excluded.updated_at},
+            set_={
+                "qte": stmt.excluded.qte,
+                "purchase_date": stmt.excluded.purchase_date,
+                "updated_at": stmt.excluded.updated_at,
+            },
         )
         await self.session.execute(stmt)
         await self.session.commit()
@@ -129,9 +137,9 @@ class ClientProductService:
 
         await self._get_client_or_raise(client_id, for_update=True)
 
-        merged: dict[UUID, int] = {}
+        merged: dict[UUID, tuple[int, date | None]] = {}
         for item in items:
-            merged[item.product_id] = item.qte
+            merged[item.product_id] = (item.qte, item.purchase_date)
         product_ids = list(merged.keys())
 
         if product_ids:
@@ -156,15 +164,21 @@ class ClientProductService:
                     "user_id": client_id,
                     "product_id": pid,
                     "qte": qte,
+                    "purchase_date": purchase_date,
+                    "purchase_date": purchase_date or date.today(),
                     "created_at": now,
                     "updated_at": now,
                 }
-                for pid, qte in merged.items()
+                for pid, (qte, purchase_date) in merged.items()
             ]
             stmt = pg_insert(ClientProduct.__table__).values(rows)
             stmt = stmt.on_conflict_do_update(
                 index_elements=["user_id", "product_id"],
-                set_={"qte": stmt.excluded.qte, "updated_at": stmt.excluded.updated_at},
+                set_={
+                    "qte": stmt.excluded.qte,
+                    "purchase_date": stmt.excluded.purchase_date,
+                    "updated_at": stmt.excluded.updated_at,
+                },
             )
             await self.session.execute(stmt)
 
@@ -217,8 +231,37 @@ class ClientProductService:
         return user
 
 
-def _to_read(product: Product, qte: int) -> ClientProductRead:
-    return ClientProductRead(**ProductRead.model_validate(product).model_dump(), qte=qte)
+def _to_read(product: Product, qte: int, purchase_date: date) -> ClientProductRead:
+    """Construit un `ClientProductRead` à partir d'un produit et de son affectation client.
+
+    Calcule les champs de garantie (`warranty_end_date`, `warranty_status`) à partir de
+    `purchase_date` et `Product.warranty_months`, en réutilisant la même logique que
+    `WarrantyService.get_client_warranty()` :
+
+    - ACTIVE  : la garantie est en cours (today < warranty_end_date) ;
+    - EXPIRED : la garantie est expirée (today >= warranty_end_date) ;
+    - UNKNOWN : purchase_date ou warranty_months est absent → calcul impossible.
+    """
+    from datetime import date as _date
+
+    today = _date.today()
+    wm = product.warranty_months
+
+    if purchase_date is not None and wm is not None:
+        warranty_end_date = _add_months(purchase_date, wm)
+        warranty_status = "ACTIVE" if today < warranty_end_date else "EXPIRED"
+    else:
+        warranty_end_date = None
+        warranty_status = "UNKNOWN"
+
+    return ClientProductRead(
+        **ProductRead.model_validate(product).model_dump(),
+        qte=qte,
+        purchase_date=purchase_date,
+        warranty_end_date=warranty_end_date,
+        warranty_status=warranty_status,
+    )
+
 
 
 def _role_name(user: User) -> str | None:

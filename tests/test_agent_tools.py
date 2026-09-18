@@ -7,6 +7,7 @@ scripté (aucun appel réseau).
 """
 import asyncio
 import uuid
+from datetime import date
 
 import pytest
 import pytest_asyncio
@@ -43,7 +44,7 @@ async def tool_ctx(db_session, role_ids, product):
         UserCreate(email=unique_email("tool.client"), password="ValidPass1", role_id=role_ids["client"])
     )
     await ClientProductService(db_session).assign_products(
-        client.id, [ClientProductItem(product_id=product.id, qte=1)]
+        client.id, [ClientProductItem(product_id=product.id, qte=1, purchase_date=date(2026, 1, 10))]
     )
     pre = (
         await db_session.execute(

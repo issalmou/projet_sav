@@ -59,15 +59,31 @@ async def get_product_warranty(
     Un client ne peut consulter que la garantie d'un produit qui lui est affecté."""
 
     try:
-        warranty = await warranty_service.get_warranty(product_id)
+        product = await warranty_service.get_warranty(product_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
     is_plain_client = not current_user.is_superuser and get_role_name(current_user) == RoleName.CLIENT.value
-    if is_plain_client and not await ClientProductService(db).is_assigned(current_user.id, product_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This product is not assigned to you")
+    if is_plain_client:
+        if not await ClientProductService(db).is_assigned(current_user.id, product_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This product is not assigned to you")
+        result = await warranty_service.get_client_warranty(current_user.id, product_id)
+        return ProductWarrantyRead(
+            id=product.id,
+            reference=product.reference,
+            name=product.name,
+            warranty_months=result.warranty_months,
+            purchase_date=result.purchase_date,
+            warranty_end_date=result.warranty_end_date,
+            warranty_status=result.status,
+        )
 
-    return warranty
+    return ProductWarrantyRead(
+        id=product.id,
+        reference=product.reference,
+        name=product.name,
+        warranty_months=product.warranty_months,
+    )
 
 
 @router.patch(

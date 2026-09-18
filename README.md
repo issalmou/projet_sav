@@ -143,6 +143,18 @@ Depuis `backend/` :
 PYTHONPATH=. python -m pytest app/tests/ -q
 ```
 
+**Suite actuelle : 646 tests** (47 fichiers) — 0 failing sur la base PostgreSQL de développement.
+
+Périmètre couvert :
+- Authentification JWT, RBAC, gestion des utilisateurs et des rôles
+- Gestion des produits (CRUD, pagination, droits par rôle)
+- Affectation produit ↔ client (`POST`, `PUT`, `DELETE`, concurrence, upsert)
+- **Informations de garantie dans la liste des produits** (`warranty_end_date`, `warranty_status` — statuts ACTIVE / EXPIRED / UNKNOWN)
+- Garanties (`GET`, `PATCH`, `DELETE` sur `/warranties/`)
+- Chat IA et agent LangGraph (E2E : résolution, escalade, ticket, multi-problèmes)
+- Tickets (CRUD, filtrage par rôle, assignation)
+- Documents (upload, RAG, recherche sémantique)
+
 Les tests marqués `external` (appels réseau réels vers un fournisseur LLM/embedding externe — nécessitent une clé API valide et une connexion réseau) sont **exclus par défaut** de cette commande. Ils ne sont pas nécessaires pour une exécution locale normale de la suite de tests. Pour les exécuter explicitement :
 
 ```bash
@@ -159,15 +171,45 @@ Une fois l'API lancée :
 
 ## Contrats métier (Client / Produit / Conversation / Ticket / Agent)
 
-### Client ↔ Produit (avec quantité)
+### Client ↔ Produit (avec quantité et garantie)
 
-Un « client » est un `User` de rôle `client` (aucune entité `Client`). `client_products` associe des produits **existants** à un client, avec une quantité (`qte >= 1`, contrainte CHECK). Gestion réservée à `administrateur` / `responsable_sav` / superuser :
+Un « client » est un `User` de rôle `client` (aucune entité `Client`). `client_products` associe des produits **existants** à un client, avec une quantité (`qte >= 1`, contrainte CHECK) et une **date d'achat** (`purchase_date`). Gestion réservée à `administrateur` / `responsable_sav` / superuser :
 
-- `GET  /api/v1/clients/{client_id}/products` — le client lui-même ou le staff ; renvoie chaque produit **avec sa `qte`** ;
+- `GET  /api/v1/clients/{client_id}/products` — le client lui-même, le staff, ou un technicien affecté à un ticket de ce client.
+  Renvoie chaque produit **avec sa `qte`**, sa `purchase_date` et les **informations de garantie calculées** :
+
+  ```json
+  [
+    {
+      "id": "...",
+      "reference": "REF-001",
+      "name": "Imprimante X3",
+      "category": "imprimantes",
+      "warranty_months": 24,
+      "qte": 2,
+      "purchase_date": "2026-01-10",
+      "warranty_end_date": "2028-01-10",
+      "warranty_status": "ACTIVE"
+    }
+  ]
+  ```
+
+  - `warranty_months` — durée de garantie catalogue du produit (`null` si non définie) ;
+  - `warranty_end_date` — `purchase_date + warranty_months` mois ; `null` si l'un des deux est absent ;
+  - `warranty_status` — `"ACTIVE"` (garantie en cours), `"EXPIRED"` (garantie expirée), ou `"UNKNOWN"` (données manquantes).
+
 - `POST /api/v1/clients/{client_id}/products` — staff uniquement.
-  Corps : `{"items": [{"product_id": "...", "qte": 3}, ...]}` (`qte` optionnel, défaut 1).
-  Doublons de `product_id` fusionnés ; produit déjà affecté → **quantité mise à jour** (upsert) ; transaction unique ;
+  Corps : `{"items": [{"product_id": "...", "qte": 3, "purchase_date": "2026-01-10"}, ...]}`.
+  `qte` optionnel (défaut 1) ; `purchase_date` optionnel (défaut : date du jour).
+  Doublons de `product_id` fusionnés ; produit déjà affecté → **quantité et date d'achat mises à jour** (upsert) ; transaction unique.
+
+- `PUT  /api/v1/clients/{client_id}/products` — staff uniquement.
+  Corps : `{"items": [{"product_id": "...", "qte": 1, "purchase_date": "2026-01-10"}]}`.
+  Remplace **l'intégralité** des affectations (sync complet) — les produits absents d'`items` sont retirés. Liste vide autorisée (retire tout). Verrou SELECT FOR UPDATE sur le client pour éviter les états mixtes en cas de syncs concurrents.
+
 - `DELETE /api/v1/clients/{client_id}/products/{product_id}` — staff uniquement (retire l'affectation).
+
+> **Note :** `GET /api/v1/products/` pour un utilisateur de rôle `client` retourne également les champs `purchase_date`, `warranty_end_date` et `warranty_status` (même structure que ci-dessus, scope automatiquement limité aux produits affectés au client connecté).
 
 ### Conversation ↔ Produit — création séparée de l'envoi de message
 

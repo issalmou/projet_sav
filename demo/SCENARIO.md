@@ -82,7 +82,22 @@ Le mode `--live` utilise le vrai LLM configuré : la décision finale (résolu/e
 
 ## Partie E — Garantie (en direct, Swagger, bonus rapide)
 
-`GET /warranties/{product_id}` → confirme la garantie du produit (24 mois par défaut sur l'exemple).
+Deux façons de vérifier la garantie d'un produit :
+
+1. **Endpoint dédié :** `GET /warranties/{product_id}` → garantie du produit pour le client connecté (avec `purchase_date`, `warranty_end_date`, `warranty_status`).
+
+2. **Intégrée dans la liste des produits :** `GET /clients/{client_id}/products` (ou `GET /products/` pour un client) → chaque produit inclut directement `warranty_months`, `purchase_date`, `warranty_end_date` et `warranty_status`.
+   Exemple de réponse :
+   ```json
+   [{
+     "id": "...", "name": "Pompe à chaleur", "reference": "PAC-DEMO-01",
+     "warranty_months": 60,
+     "qte": 1,
+     "purchase_date": "2026-01-10",
+     "warranty_end_date": "2031-01-10",
+     "warranty_status": "ACTIVE"
+   }]
+   ```
 
 ---
 

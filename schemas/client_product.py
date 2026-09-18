@@ -4,6 +4,7 @@ Aucune notion d'achat / commande / facture : il s'agit uniquement de
 rattacher des produits DÉJÀ existants au catalogue à un utilisateur ayant le
 rôle « client », avec une quantité (`qte >= 1`).
 """
+from datetime import date
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +17,7 @@ class ClientProductItem(BaseModel):
 
     product_id: UUID
     qte: int = Field(default=1, ge=1, description="Quantité affectée (>= 1).")
+    purchase_date: date = Field(default_factory=date.today, description="Date d'achat affectée (défaut: aujourd'hui).")
 
 
 class ClientProductAssign(BaseModel):
@@ -41,11 +43,26 @@ class ClientProductSync(BaseModel):
 
 
 class ClientProductRead(ProductRead):
-    """Un produit affecté à un client, avec la quantité affectée."""
+    """Un produit affecté à un client, avec la quantité affectée et les informations de garantie.
+
+    Champs garantie calculés à partir de `Product.warranty_months` et de
+    `ClientProduct.purchase_date` (date d'achat enregistrée lors de l'affectation) :
+
+    - `warranty_months`    : durée de garantie catalogue du produit (None si non définie) ;
+    - `warranty_end_date`  : date de fin de garantie = purchase_date + warranty_months ;
+                            None si l'un des deux champs source est absent ;
+    - `warranty_status`    : « ACTIVE » / « EXPIRED » / « UNKNOWN »
+                            (UNKNOWN si purchase_date ou warranty_months est absent).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     qte: int
+    purchase_date: date
+
+    # Champs garantie calculés côté service (non stockés en base).
+    warranty_end_date: date | None = None
+    warranty_status: str | None = None
 
 
 __all__ = ["ClientProductAssign", "ClientProductItem", "ClientProductRead", "ClientProductSync"]

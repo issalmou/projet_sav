@@ -1,8 +1,4 @@
-"""Tests HTTP de api/warranties.py : API Garanties (CDC semaine 6, Option A validée).
-
-Option A : la garantie est une propriété statique de `Product.warranty_months`
-— pas de garantie par instance, pas de date d'achat/expiration.
-"""
+"""Tests HTTP de l'API des garanties catalogue et client."""
 import uuid
 
 import pytest
@@ -52,7 +48,7 @@ async def test_client_can_read_warranty_of_assigned_product(client, actors, clea
     product_id = created.json()["id"]
     await client.post(
         f"/api/v1/clients/{client_user.id}/products",
-        json={"items": [{"product_id": product_id, "qte": 1}]},
+        json={"items": [{"product_id": product_id, "qte": 1, "purchase_date": "2026-01-10"}]},
         headers=_auth_headers(responsable_token),
     )
 
@@ -62,6 +58,9 @@ async def test_client_can_read_warranty_of_assigned_product(client, actors, clea
     body = response.json()
     assert body["id"] == product_id
     assert body["warranty_months"] == 24
+    assert body["purchase_date"] == "2026-01-10"
+    assert body["warranty_end_date"] == "2028-01-10"
+    assert body["warranty_status"] == "ACTIVE"
 
 
 @pytest.mark.asyncio

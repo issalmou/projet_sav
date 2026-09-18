@@ -12,8 +12,9 @@ Le rattachement est géré exclusivement par le staff (administrateur /
 responsable SAV) ; le client peut le consulter mais jamais le modifier.
 """
 import uuid
+from datetime import date
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +38,8 @@ class ClientProduct(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # Une quantité nulle est représentée par la suppression de l'affectation.
     qte: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    purchase_date: Mapped[date] = mapped_column(Date, nullable=False)
+    purchase_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
 
     def __repr__(self) -> str:
         return f"<ClientProduct user_id={self.user_id} product_id={self.product_id} qte={self.qte}>"

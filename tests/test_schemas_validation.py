@@ -1,8 +1,10 @@
 """Tests de validation Pydantic (tâches 6, 7) : rôles CDC, langue, complexité du mot de passe."""
 import pytest
+from datetime import date
 from pydantic import ValidationError
 
 from app.schemas.auth import LoginRequest
+from app.schemas.client_product import ClientProductItem
 from app.schemas.role import RoleCreate
 from app.schemas.user import UserCreate, UserUpdate
 
@@ -47,3 +49,11 @@ def test_login_request_does_not_enforce_password_complexity():
     # règle de complexité ajoutée après coup (tâche 7).
     login = LoginRequest(email="a@example.com", password="simplepassword")
     assert login.password == "simplepassword"
+
+
+def test_client_product_purchase_date_is_validated():
+    item = ClientProductItem(product_id="00000000-0000-0000-0000-000000000001", purchase_date=date(2026, 1, 10))
+    assert item.purchase_date == date(2026, 1, 10)
+
+    with pytest.raises(ValidationError):
+        ClientProductItem(product_id="00000000-0000-0000-0000-000000000001", purchase_date="not-a-date")

@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.ai.agent.context import AgentContext
 from app.ai.agent.ticket_summary import TicketSummaryService
+from app.services.warranty_service import WarrantyService
 from app.ai.exceptions import EmbeddingError
 from app.ai.providers.base import ToolSpec
 from app.core.logger import logger
@@ -110,16 +111,20 @@ async def search_docs(ctx: AgentContext, query: str) -> str:
 
 
 async def get_warranty(ctx: AgentContext) -> str:
-    """Durée de garantie standard du produit de la conversation."""
+    """Retourne la garantie personnalisée du produit du client authentifié."""
 
-    product = await ctx.session.get(Product, ctx.product_id)
-    if product is None:  # théoriquement impossible (FK), sécurité
-        return "Produit introuvable."
-    if product.warranty_months is None:
-        return f"Aucune durée de garantie n'est renseignée pour le produit « {product.name} »."
+    try:
+        result = await WarrantyService(ctx.session).get_client_warranty(ctx.client_id, ctx.product_id)
+    except ValueError:
+        return "Ce produit n'est pas affecté à votre compte : je ne peux pas consulter sa garantie."
+    if result.status == "UNKNOWN":
+        if result.purchase_date is None:
+            return f"La date d'achat du produit « {result.product.name} » est inconnue : le statut de garantie ne peut pas être déterminé."
+        return f"La durée de garantie du produit « {result.product.name} » n'est pas renseignée."
     return (
-        f"Le produit « {product.name} » (référence {product.reference}) bénéficie d'une "
-        f"garantie standard de {product.warranty_months} mois à compter de l'achat."
+        f"Produit : {result.product.name}. Date d'achat : {result.purchase_date.isoformat()}. "
+        f"Durée : {result.warranty_months} mois. Date de fin : {result.warranty_end_date.isoformat()}. "
+        f"Statut : {result.status}."
     )
 
 
@@ -478,7 +483,7 @@ TOOL_SPECS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="get_warranty",
-        description="Retourne la durée de garantie standard du produit concerné par la conversation.",
+        description="Calcule la garantie personnalisée du produit du client authentifié avec date d'achat, durée, date de fin et statut.",
         parameters={"type": "object", "properties": {}},
     ),
     ToolSpec(

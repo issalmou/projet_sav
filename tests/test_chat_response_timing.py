@@ -9,6 +9,7 @@ projet) car il appelle le vrai fournisseur LLM configuré dans `.env`
 `-s` est nécessaire pour voir les temps affichés (sinon capturés par pytest).
 """
 import time
+from datetime import date
 
 import pytest
 
@@ -41,7 +42,7 @@ async def test_chat_response_timing(db_session, role_ids, product_id, monkeypatc
         UserCreate(email=unique_email("timing"), password="ValidPass1", role_id=role_ids["client"])
     )
     await ClientProductService(db_session).assign_products(
-        client.id, [ClientProductItem(product_id=product_id, qte=1)]
+        client.id, [ClientProductItem(product_id=product_id, qte=1, purchase_date=date(2026, 1, 10))]
     )
 
     service = ChatService(db_session)  # aucun override : vrai LLM (Gemini) + vrai embedder (E5)

@@ -7,6 +7,7 @@ Contrat :
 L'agent est remplacé par un `ScriptedLLMProvider` via `app.dependency_overrides`.
 """
 import uuid
+from datetime import date
 
 import pytest
 import pytest_asyncio
@@ -51,6 +52,7 @@ def _set_script(script, *, chunks=None):
 @pytest_asyncio.fixture(autouse=True)
 async def default_agent():
     app.dependency_overrides[get_chat_service] = _override_chat_service(_DEFAULT_AGENT_SCRIPT)
+    app.dependency_overrides[get_chat_service] = _override_chat_service(_DEFAULT_AGENT_SCRIPT, chunks=[_CHUNK])
     yield
     app.dependency_overrides.pop(get_chat_service, None)
 
@@ -64,7 +66,7 @@ async def chat_client(client, db_session, role_ids, product):
         UserCreate(email=unique_email("chatapi"), password="ValidPass1", role_id=role_ids["client"])
     )
     await ClientProductService(db_session).assign_products(
-        user.id, [ClientProductItem(product_id=product.id, qte=1)]
+        user.id, [ClientProductItem(product_id=product.id, qte=1, purchase_date=date(2026, 1, 10))]
     )
     login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": "ValidPass1"})
     token = login.json()["access_token"]
@@ -191,7 +193,9 @@ async def test_client_cannot_send_message_in_another_users_conversation(client, 
     other = await us.create_user(
         UserCreate(email=unique_email("otherclient"), password="ValidPass1", role_id=role_ids["client"])
     )
-    await ClientProductService(db_session).assign_products(other.id, [ClientProductItem(product_id=product.id, qte=1)])
+    await ClientProductService(db_session).assign_products(
+        other.id, [ClientProductItem(product_id=product.id, qte=1, purchase_date=date(2026, 1, 10))]
+    )
     other_login = await client.post("/api/v1/auth/login", json={"email": other.email, "password": "ValidPass1"})
     other_token = other_login.json()["access_token"]
     other_conv = (await _open_conv(client, other_token, product.id)).json()

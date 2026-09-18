@@ -1,5 +1,5 @@
 """Schémas Pydantic pour les produits."""
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -52,6 +52,9 @@ class ProductWarrantyRead(BaseModel):
     reference: str
     name: str
     warranty_months: int | None
+    purchase_date: date | None = None
+    warranty_end_date: date | None = None
+    warranty_status: str | None = None
 
 
 class WarrantyUpdate(BaseModel):

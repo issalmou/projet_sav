@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, get_db_session
 from app.core.permissions import STAFF_ROLES, get_role_name, require_roles
 from app.models.user import User
+from app.schemas.client_product import ClientProductRead
 from app.schemas.product import ProductCreate, ProductRead, ProductUpdate
 from app.services.client_product_service import ClientProductService
 from app.services.product_service import ProductService
@@ -70,6 +71,7 @@ def _is_plain_client(user: User) -> bool:
 @router.get(
     "/",
     response_model=list[ProductRead],
+    response_model=list[ClientProductRead | ProductRead],
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
