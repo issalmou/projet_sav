@@ -96,8 +96,31 @@ class UserPublic(BaseModel):
     id: UUID
     email: EmailStr
     full_name: str | None = None
+    phone_number: str | None = None
     preferred_language: str = "fr"
     role: RoleRead | None = None
 
 
 __all__ = ["UserBase", "UserCreate", "UserUpdate", "UserRead", "UserPublic"]
+class UserProfileUpdate(BaseModel):
+    """Données autorisées pour la mise à jour par l'utilisateur de son propre profil."""
+
+    email: EmailStr | None = None
+    full_name: str | None = Field(default=None, max_length=150)
+    phone_number: str | None = Field(default=None, max_length=30)
+    preferred_language: str | None = Field(default=None, min_length=2, max_length=5)
+    password: str | None = Field(default=None, min_length=8, max_length=255)
+
+    @field_validator("preferred_language")
+    @classmethod
+    def _check_preferred_language(cls, value: str | None) -> str | None:
+        return _validate_supported_language(value)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password_complexity(cls, value: str | None) -> str | None:
+        return _validate_password_complexity(value)
+
+
+__all__ = ["UserBase", "UserCreate", "UserUpdate", "UserRead", "UserPublic", "UserProfileUpdate"]
+

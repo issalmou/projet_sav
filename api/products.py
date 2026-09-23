@@ -70,7 +70,6 @@ def _is_plain_client(user: User) -> bool:
 
 @router.get(
     "/",
-    response_model=list[ProductRead],
     response_model=list[ClientProductRead | ProductRead],
     status_code=status.HTTP_200_OK,
     responses={

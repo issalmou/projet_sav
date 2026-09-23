@@ -177,6 +177,20 @@ async def test_technicien_can_view_and_update_own_profile(client, role_ids, acto
 
 
 @pytest.mark.asyncio
+async def test_user_can_update_profile_via_patch_on_users_endpoint(client, actors):
+    """Vérifie que la méthode HTTP PATCH est également acceptée sur /users/{user_id}."""
+    client_user, client_token = actors["client"]
+
+    patch_res = await client.patch(
+        f"/api/v1/users/{client_user.id}",
+        headers=_auth_headers(client_token),
+        json={"phone_number": "+33611223344"},
+    )
+    assert patch_res.status_code == 200
+    assert patch_res.json()["phone_number"] == "+33611223344"
+
+
+@pytest.mark.asyncio
 async def test_responsable_sav_cannot_access_admin_account(client, actors):
     admin_user, _ = actors["admin"]
     _, responsable_token = actors["responsable"]

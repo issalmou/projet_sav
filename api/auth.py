@@ -12,7 +12,9 @@ from app.core.dependencies import get_current_user, get_db_session
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RefreshRequest, Token
 from app.schemas.user import UserPublic
+from app.schemas.user import UserProfileUpdate, UserPublic, UserUpdate
 from app.services.auth_service import AuthService
+from app.services.user_service import UserService
 
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -65,6 +67,45 @@ async def read_current_user(current_user: Annotated[User, Depends(get_current_us
     """Retourne le profil de l'utilisateur actuellement authentifié."""
 
     return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserPublic,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        409: {"description": "Un utilisateur avec cet email existe déjà."},
+        422: {"description": "Payload invalide (email, mot de passe ou langue non conformes)."},
+    },
+)
+@router.put(
+    "/me",
+    response_model=UserPublic,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {"description": "Ce compte utilisateur a été désactivé."},
+        409: {"description": "Un utilisateur avec cet email existe déjà."},
+        422: {"description": "Payload invalide (email, mot de passe ou langue non conformes)."},
+    },
+)
+async def update_current_user(
+    payload: UserProfileUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Met à jour les informations personnelles du profil de l'utilisateur connecté."""
+
+    user_service = UserService(db)
+    user_update = UserUpdate(**payload.model_dump(exclude_unset=True))
+    try:
+        updated = await user_service.update_user(current_user.id, user_update)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return updated
 
 
 @router.post(

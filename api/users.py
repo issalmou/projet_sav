@@ -158,6 +158,23 @@ async def get_user(
         422: {"description": "Payload invalide."},
     },
 )
+@router.patch(
+    "/{user_id}",
+    response_model=UserRead,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Jeton JWT manquant, invalide, expiré ou révoqué."},
+        403: {
+            "description": (
+                "Modification de son propre rôle/statut, utilisateur/rôle hors périmètre, "
+                "gestion d'un compte super admin, ou modification du statut super admin sans l'être soi-même."
+            )
+        },
+        404: {"description": "Utilisateur introuvable."},
+        409: {"description": "Un utilisateur avec cet email existe déjà."},
+        422: {"description": "Payload invalide."},
+    },
+)
 async def update_user(
     user_id: UUID,
     payload: UserUpdate,

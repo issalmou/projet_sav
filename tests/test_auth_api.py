@@ -170,3 +170,124 @@ async def test_login_after_logout_issues_valid_tokens(client, auth_user):
 
     response = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {second_access_token}"})
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_me_returns_phone_number(client, auth_user, db_session):
+    user, password = auth_user
+    await UserService(db_session).update_user(user.id, UserUpdate(phone_number="+33612345678"))
+
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+
+    response = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+    assert response.status_code == 200
+    assert response.json()["phone_number"] == "+33612345678"
+
+
+@pytest.mark.asyncio
+async def test_update_profile_via_patch_me(client, auth_user):
+    user, password = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+
+    response = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "full_name": "Nouveau Nom Me",
+            "phone_number": "+216 12 345 678",
+            "preferred_language": "ar",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["full_name"] == "Nouveau Nom Me"
+    assert data["phone_number"] == "+216 12 345 678"
+    assert data["preferred_language"] == "ar"
+
+    # Vérification avec GET /auth/me
+    get_res = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+    assert get_res.status_code == 200
+    assert get_res.json()["full_name"] == "Nouveau Nom Me"
+    assert get_res.json()["phone_number"] == "+216 12 345 678"
+
+
+@pytest.mark.asyncio
+async def test_update_profile_via_put_me(client, auth_user):
+    user, password = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+
+    response = await client.put(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"full_name": "Nom Modifie PUT"},
+    )
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "Nom Modifie PUT"
+
+
+@pytest.mark.asyncio
+async def test_client_and_technicien_can_update_own_profile_via_me(client, actors):
+    """Vérifie que les rôles client et technicien peuvent mettre à jour leur profil via /auth/me."""
+    client_user, client_token = actors["client"]
+    technicien_user, technicien_token = actors["technicien"]
+
+    # Client
+    res_client = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {client_token}"},
+        json={"full_name": "Client Nom Modifie", "phone_number": "+33600000001"},
+    )
+    assert res_client.status_code == 200
+    assert res_client.json()["full_name"] == "Client Nom Modifie"
+    assert res_client.json()["phone_number"] == "+33600000001"
+
+    # Technicien
+    res_tech = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {technicien_token}"},
+        json={"full_name": "Tech Nom Modifie", "phone_number": "+33600000002"},
+    )
+    assert res_tech.status_code == 200
+    assert res_tech.json()["full_name"] == "Tech Nom Modifie"
+    assert res_tech.json()["phone_number"] == "+33600000002"
+
+
+@pytest.mark.asyncio
+async def test_update_password_via_me_allows_subsequent_login(client, auth_user):
+    user, old_password = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": old_password})
+    access_token = login.json()["access_token"]
+
+    response = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"password": "NewSecretPassword123"},
+    )
+    assert response.status_code == 200
+
+    # Ancien mot de passe ne marche plus
+    bad_login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": old_password})
+    assert bad_login.status_code == 401
+
+    # Nouveau mot de passe fonctionne
+    good_login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": "NewSecretPassword123"})
+    assert good_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_update_email_duplicate_via_me_is_409(client, auth_user, actors):
+    user, password = auth_user
+    client_user, _ = actors["client"]
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+
+    response = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"email": client_user.email},
+    )
+    assert response.status_code == 409
+

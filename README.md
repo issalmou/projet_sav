@@ -144,9 +144,11 @@ PYTHONPATH=. python -m pytest app/tests/ -q
 ```
 
 **Suite actuelle : 646 tests** (47 fichiers) — 0 failing sur la base PostgreSQL de développement.
+**Suite actuelle : 653 tests** (47 fichiers) — 0 failing sur la base PostgreSQL de développement.
 
 Périmètre couvert :
 - Authentification JWT, RBAC, gestion des utilisateurs et des rôles
+- Authentification JWT, profil utilisateur (`GET/PATCH/PUT /auth/me`), RBAC, gestion des utilisateurs et des rôles
 - Gestion des produits (CRUD, pagination, droits par rôle)
 - Affectation produit ↔ client (`POST`, `PUT`, `DELETE`, concurrence, upsert)
 - **Informations de garantie dans la liste des produits** (`warranty_end_date`, `warranty_status` — statuts ACTIVE / EXPIRED / UNKNOWN)
@@ -170,6 +172,16 @@ Une fois l'API lancée :
 - Schéma OpenAPI brut : `/openapi.json`
 
 ## Contrats métier (Client / Produit / Conversation / Ticket / Agent)
+
+### Gestion du profil personnel (Client, Technicien, Staff)
+
+Tout utilisateur authentifié peut consulter et modifier ses propres informations personnelles sans nécessiter de rôle staff :
+
+- `GET /api/v1/auth/me` — retourne le profil public de l'utilisateur courant (`id`, `email`, `full_name`, `phone_number`, `preferred_language`, `role`).
+- `PATCH /api/v1/auth/me` (ou `PUT`) — met à jour les informations du profil (`full_name`, `phone_number`, `preferred_language`, `email`, `password`) directement sans avoir à renseigner son UUID.
+- `PATCH /api/v1/users/{user_id}` (ou `PUT`) — mise à jour via l'endpoint utilisateur (soi-même pour ses infos personnelles, ou staff pour les comptes dans son périmètre).
+
+Protection sécurité : la modification de son propre rôle ou statut de compte (`role_id`, `is_active`, `is_superuser`) en libre-service est strictement rejetée (`403 Forbidden`).
 
 ### Client ↔ Produit (avec quantité et garantie)
 
