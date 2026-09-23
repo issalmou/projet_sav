@@ -9,6 +9,7 @@ import { useProducts } from '../../contexts/useProducts'
 import { PRODUCT_CATEGORIES } from '../../contexts/ProductsContext'
 import { Field, inputClass } from '../../components/admin/ui'
 import { toastService } from '../../services/toast'
+import { useI18n } from '../../i18n/useI18n'
 
 const ICON_MAP = {
   monitor: Monitor, server: Server, wifi: Wifi, printer: Printer,
@@ -185,9 +186,13 @@ function SpecsEditor({ specs, onChange }) {
   )
 }
 
-export default function ProductForm() {
+void ImageUploader
+void SpecsEditor
+
+export default function ProductForm({ basePath = '/admin' }) {
   const navigate = useNavigate()
   const { id } = useParams()
+  const { t } = useI18n()
   const { products, createProduct, updateProduct } = useProducts()
 
   const editing = products.find((p) => p.id === id)
@@ -196,12 +201,11 @@ export default function ProductForm() {
   const [formData, setFormData] = useState({
     name: editing?.name || '',
     reference: editing?.reference || '',
-    category: editing?.category || 'Ecrans',
+    category: editing?.category || '',
     description: editing?.description || '',
     brand: editing?.brand || '',
     model: editing?.model || '',
     serial_number: editing?.serial_number || '',
-    price: editing?.price || '',
     warranty_months: editing?.warranty_months || '',
     warranty_purchase_date: editing?.warranty_purchase_date || '',
     image_url: editing?.image_url || null,
@@ -223,35 +227,34 @@ export default function ProductForm() {
   const handleSubmit = (e) => {
     e.preventDefault()
     const errs = {}
-    if (!formData.name.trim()) errs.name = 'Le nom est obligatoire.'
-    if (!formData.reference.trim()) errs.reference = 'La référence est obligatoire.'
+    if (!formData.name.trim()) errs.name = t('admin.products.nameRequired')
+    if (!formData.reference.trim()) errs.reference = t('admin.products.refRequired')
+    if (formData.name.trim().length > 200) errs.name = t('admin.products.nameTooLong')
+    if (formData.reference.trim().length > 100) errs.reference = t('admin.products.refTooLong')
+    if (formData.description.trim().length > 400) errs.description = t('admin.products.descTooLong')
+    if (formData.warranty_months !== '' && (!Number.isInteger(Number(formData.warranty_months)) || Number(formData.warranty_months) < 0)) {
+      errs.warranty_months = t('admin.products.warrantyInvalid')
+    }
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
 
     const payload = {
       name: formData.name.trim(),
       reference: formData.reference.trim(),
-      category: formData.category,
-      description: formData.description.trim(),
-      brand: formData.brand.trim(),
-      model: formData.model.trim(),
-      serial_number: formData.serial_number.trim(),
-      price: Number(formData.price) || 0,
+      category: formData.category || null,
+      description: formData.description.trim() || null,
       warranty_months: formData.warranty_months ? Number(formData.warranty_months) : null,
-      warranty_purchase_date: formData.warranty_purchase_date || null,
-      image_url: formData.image_url,
-      specs: formData.specs,
     }
 
     if (isEdit) {
       updateProduct(id, payload)
-      navigate('/admin/products', {
-        state: { toast: { message: `Le produit "${payload.name}" a été mis à jour` } },
+      navigate(`${basePath}/products`, {
+        state: { toast: { message: t('admin.products.updated', { name: payload.name }) } },
       })
     } else {
       createProduct(payload)
-      navigate('/admin/products', {
-        state: { toast: { message: `Le produit "${payload.name}" a été créé` } },
+      navigate(`${basePath}/products`, {
+        state: { toast: { message: t('admin.products.created', { name: payload.name }) } },
       })
     }
   }
@@ -259,98 +262,50 @@ export default function ProductForm() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <button
-        onClick={() => navigate('/admin/products')}
+        onClick={() => navigate(`${basePath}/products`)}
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Retour aux produits
+        {t('pd.backToProducts')}
       </button>
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-          {isEdit ? `Modifier ${editing.name}` : 'Ajouter un produit'}
+          {isEdit ? t('admin.products.editTitle', { name: editing.name }) : t('products.add')}
         </h1>
         <p className="text-slate-500">
           {isEdit
-            ? "Mettez à jour les informations du produit."
-            : 'Ajoutez un nouveau produit au catalogue.'}
+            ? t('admin.products.editSubtitle')
+            : t('admin.products.createSubtitle')}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2">
-              <ImageUploader
-                image={formData.image_url}
-                onChange={(url) => handleChange('image_url', url)}
-                category={formData.category}
-              />
-            </div>
-
-            <Field label="Nom du produit" required error={errors.name}>
+            <Field label={t('admin.products.name')} required error={errors.name}>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
+                maxLength={200}
                 placeholder="Ex: 3LM Solution Pro 32&quot; 4K OLED"
                 className={inputClass}
               />
             </Field>
 
-            <Field label="Référence" required error={errors.reference}>
+            <Field label={t('pd.reference')} required error={errors.reference}>
               <input
                 type="text"
                 value={formData.reference}
                 onChange={(e) => handleChange('reference', e.target.value)}
+                maxLength={100}
                 placeholder="Ex: NX-OLED-48293"
                 className={inputClass}
               />
             </Field>
 
-            <Field label="Marque">
-              <input
-                type="text"
-                value={formData.brand}
-                onChange={(e) => handleChange('brand', e.target.value)}
-                placeholder="Ex: 3LM Solutions"
-                className={inputClass}
-              />
-            </Field>
-
-            <Field label="Modèle">
-              <input
-                type="text"
-                value={formData.model}
-                onChange={(e) => handleChange('model', e.target.value)}
-                placeholder="Ex: 3LM-OLED-32"
-                className={inputClass}
-              />
-            </Field>
-
-            <Field label="Numéro de série">
-              <input
-                type="text"
-                value={formData.serial_number}
-                onChange={(e) => handleChange('serial_number', e.target.value)}
-                placeholder="Ex: SN-NXOLED-48293"
-                className={inputClass}
-              />
-            </Field>
-
-            <Field label="Prix unitaire (€)">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.price}
-                onChange={(e) => handleChange('price', e.target.value)}
-                placeholder="0.00"
-                className={inputClass}
-              />
-            </Field>
-
-            <Field label="Catégorie" required>
+            <Field label={t('common.category')}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {PRODUCT_CATEGORIES.map((c) => {
                   const colors = CATEGORY_COLORS[c.value] || CATEGORY_COLORS.Autre
@@ -374,7 +329,7 @@ export default function ProductForm() {
               </div>
             </Field>
 
-            <Field label="Durée garantie (mois)">
+            <Field label={t('pd.warrantyMonths')} error={errors.warranty_months}>
               <input
                 type="number"
                 min="0"
@@ -385,50 +340,36 @@ export default function ProductForm() {
               />
             </Field>
 
-            <Field label="Date d'achat (garantie)">
-              <input
-                type="date"
-                value={formData.warranty_purchase_date}
-                onChange={(e) => handleChange('warranty_purchase_date', e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-
             <div className="md:col-span-2">
-              <Field label="Description">
+              <Field label={t('pd.description')} error={errors.description}>
                 <textarea
                   value={formData.description}
                   onChange={(e) => handleChange('description', e.target.value)}
+                  maxLength={400}
                   rows={3}
-                  placeholder="Description du produit..."
+                  placeholder={t('pd.descriptionPlaceholder')}
                   className={`${inputClass} resize-none`}
                 />
               </Field>
             </div>
 
-            <div className="md:col-span-2">
-              <SpecsEditor
-                specs={formData.specs}
-                onChange={(specs) => handleChange('specs', specs)}
-              />
-            </div>
           </div>
         </div>
 
         <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
           <button
             type="button"
-            onClick={() => navigate('/admin/products')}
+            onClick={() => navigate(`${basePath}/products`)}
             className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-lg shadow-blue-500/20"
           >
             <Save className="w-4 h-4" />
-            {isEdit ? 'Enregistrer les modifications' : 'Créer le produit'}
+            {isEdit ? t('tf.submitEdit') : t('admin.products.create')}
           </button>
         </div>
       </form>

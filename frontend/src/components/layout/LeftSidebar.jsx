@@ -12,18 +12,20 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
 import { homeFor } from '../../contexts/roles'
+import { useI18n } from '../../i18n/useI18n'
 
 const menuItems = [
-  { icon: MessageCircle, label: 'Chat AI', path: '/chat' },
-  { icon: Ticket, label: 'Tickets', path: '/tickets' },
-  { icon: Package, label: 'Produits', path: '/products' },
-  { icon: BarChart2, label: 'Analytiques', path: '/analytics', roles: ['admin', 'agent'] },
-  { icon: Bell, label: 'Notifications', path: '/notifications' },
-  { icon: Settings, label: 'Paramètres', path: '/settings' },
+  { icon: MessageCircle, labelKey: 'nav.chat', path: '/chat' },
+  { icon: Ticket, labelKey: 'nav.tickets', path: '/tickets' },
+  { icon: Package, labelKey: 'nav.products', path: '/products' },
+  { icon: BarChart2, labelKey: 'nav.analytics', path: '/analytics', roles: ['admin', 'agent'] },
+  { icon: Bell, labelKey: 'nav.notifications', path: '/notifications' },
+  { icon: Settings, labelKey: 'nav.settings', path: '/settings' },
 ]
 
 function LeftSidebar() {
   const { user, logout } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
 
   const visibleItems = menuItems.filter(
@@ -63,7 +65,7 @@ function LeftSidebar() {
               }
             >
               <Home className="w-5 h-5" />
-              <span>Accueil</span>
+              <span>{t('nav.home')}</span>
             </NavLink>
           </li>
           {visibleItems.map((item) => (
@@ -79,7 +81,7 @@ function LeftSidebar() {
                 }
               >
                 <item.icon className="w-5 h-5" />
-                <span>{item.label}</span>
+                <span>{t(item.labelKey)}</span>
               </NavLink>
             </li>
           ))}
@@ -93,7 +95,7 @@ function LeftSidebar() {
           className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:bg-white/5 hover:text-white transition-all w-full"
         >
           <LogOut className="w-5 h-5" />
-          <span>Déconnexion</span>
+          <span>{t('nav.logout')}</span>
         </button>
       </div>
     </aside>

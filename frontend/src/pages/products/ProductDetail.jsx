@@ -1,17 +1,19 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Camera, Upload, Trash2, Edit3, Save, X,
+  ArrowLeft, Camera, Upload, Trash2, Edit3, Save,
   Monitor, Server, Wifi, Printer, HardDrive, Headphones, Package,
-  Calendar, Tag, DollarSign, Hash, Building2, FileText,
-  ShoppingCart, Plus, Clock, CheckCircle2, AlertTriangle
+  Calendar, Tag, Hash, Building2, FileText,
+  ShoppingCart, Plus, Clock, CheckCircle2
 } from 'lucide-react'
 import { useProducts } from '../../contexts/useProducts'
+import { useAuth } from '../../contexts/useAuth'
 import WarrantyBadge, { getWarrantyInfo } from '../../components/products/WarrantyBadge'
 import { Field } from '../../components/admin/ui'
 import { ConfirmModal } from '../../components/admin/ui'
 import { PRODUCT_CATEGORIES } from '../../contexts/ProductsContext'
 import { toastService } from '../../services/toast'
+import { useI18n } from '../../i18n/useI18n'
 
 const ICON_MAP = {
   monitor: Monitor, server: Server, wifi: Wifi, printer: Printer,
@@ -28,23 +30,9 @@ const CATEGORY_COLORS = {
   Autre: { bg: 'bg-slate-100', text: 'text-slate-500', ring: 'ring-slate-100' }
 }
 
-function formatPrice(price) {
-  if (!price && price !== 0) return '—'
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price)
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function formatDateShort(dateStr) {
-  if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 function ImageUploader({ currentImage, onImageChange, productName, category }) {
   const fileInputRef = useRef(null)
+  const { t } = useI18n()
   const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Autre
   const catObj = PRODUCT_CATEGORIES.find((c) => c.value === category)
   const Icon = ICON_MAP[catObj?.icon] || Package
@@ -53,7 +41,7 @@ function ImageUploader({ currentImage, onImageChange, productName, category }) {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
-      toastService.error('L\'image ne doit pas dépasser 5 Mo.')
+      toastService.error(t('pd.imageError'))
       return
     }
     const reader = new FileReader()
@@ -80,7 +68,7 @@ function ImageUploader({ currentImage, onImageChange, productName, category }) {
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
               <span className="px-3 py-2 bg-white/90 rounded-xl text-xs font-semibold text-slate-700 backdrop-blur-sm">
                 <Camera className="w-4 h-4 inline mr-1.5" />
-                Changer l'image
+                {t('pd.changeImage')}
               </span>
               <button
                 onClick={handleRemove}
@@ -97,13 +85,13 @@ function ImageUploader({ currentImage, onImageChange, productName, category }) {
             <Icon className="w-10 h-10 opacity-60" />
           </div>
           <div className="text-center">
-            <p className="text-sm font-bold opacity-80">Ajouter une image</p>
+            <p className="text-sm font-bold opacity-80">{t('pd.addImage')}</p>
             <p className="text-xs opacity-50 mt-0.5">JPEG, PNG • max 5 Mo</p>
           </div>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity mt-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/80 rounded-lg text-xs font-semibold backdrop-blur-sm">
               <Upload className="w-3.5 h-3.5" />
-              Parcourir
+              {t('pd.browse')}
             </span>
           </div>
         </div>
@@ -120,6 +108,7 @@ function ImageUploader({ currentImage, onImageChange, productName, category }) {
 }
 
 function WarrantySection({ product }) {
+  const { t, formatDate } = useI18n()
   const info = getWarrantyInfo(product.warranty_purchase_date, product.warranty_months)
   const endDate = info.endDate
   const startDate = product.warranty_purchase_date ? new Date(product.warranty_purchase_date) : null
@@ -144,14 +133,14 @@ function WarrantySection({ product }) {
           <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
             <CheckCircle2 className="w-5 h-5 text-blue-600" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900">Garantie</h3>
+          <h3 className="text-sm font-bold text-slate-900">{t('pd.warranty')}</h3>
         </div>
         <WarrantyBadge purchaseDate={product.warranty_purchase_date} warrantyMonths={product.warranty_months} />
       </div>
       <div className="p-5 space-y-4">
         <div className="space-y-2">
           <div className="flex justify-between text-xs">
-            <span className="text-slate-500">Progression</span>
+            <span className="text-slate-500">{t('pd.progress')}</span>
             <span className="font-semibold text-slate-700">{Math.round(progress)}%</span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
@@ -160,26 +149,26 @@ function WarrantySection({ product }) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Achat</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('pd.achat')}</p>
             <p className="text-sm font-semibold text-slate-800">{formatDate(product.warranty_purchase_date)}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Expiration</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('pd.expiration')}</p>
             <p className="text-sm font-semibold text-slate-800">{endDate ? formatDate(endDate.toISOString()) : '—'}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Durée</p>
-            <p className="text-sm font-semibold text-slate-800">{product.warranty_months ? `${product.warranty_months} mois` : '—'}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('pd.duration')}</p>
+            <p className="text-sm font-semibold text-slate-800">{product.warranty_months ? t('pd.months', { months: product.warranty_months }) : '—'}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reste</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('pd.rest')}</p>
             <p className="text-sm font-semibold text-slate-800">
               {endDate ? (() => {
                 const days = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24))
-                if (days < 0) return 'Expirée'
-                if (days < 30) return `${days}j`
+                if (days < 0) return t('pd.expired')
+                if (days < 30) return t('pd.days', { days })
                 const months = Math.floor(days / 30)
-                return `${months} mois`
+                return t('pd.months', { months })
               })() : '—'}
             </p>
           </div>
@@ -190,6 +179,7 @@ function WarrantySection({ product }) {
 }
 
 function SpecsSection({ specs }) {
+  const { t } = useI18n()
   if (!specs || Object.keys(specs).length === 0) return null
   return (
     <div className="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
@@ -197,7 +187,7 @@ function SpecsSection({ specs }) {
         <div className="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center">
           <Hash className="w-5 h-5 text-purple-600" />
         </div>
-        <h3 className="text-sm font-bold text-slate-900">Caractéristiques</h3>
+        <h3 className="text-sm font-bold text-slate-900">{t('pd.specs')}</h3>
       </div>
       <div className="p-5">
         <div className="space-y-2.5">
@@ -213,37 +203,31 @@ function SpecsSection({ specs }) {
   )
 }
 
-function PurchaseHistory({ purchases, productId, onAddPurchase }) {
+function PurchaseHistory({ purchases, productId, onAddPurchase, readOnly = false }) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newPurchase, setNewPurchase] = useState({
     date: new Date().toISOString().slice(0, 10),
     quantity: 1,
-    unit_price: '',
     supplier: '',
     invoice: '',
     notes: ''
   })
+  const { t, formatDate } = useI18n()
 
   const inputClass = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all'
 
-  const totalSpent = useMemo(
-    () => (purchases || []).reduce((sum, p) => sum + (p.quantity * p.unit_price), 0),
-    [purchases]
-  )
-
   const handleSubmit = () => {
     if (!newPurchase.supplier.trim()) {
-      toastService.error('Le fournisseur est obligatoire.')
+      toastService.error(t('pd.supplierRequired'))
       return
     }
     onAddPurchase(productId, {
       ...newPurchase,
       quantity: Number(newPurchase.quantity) || 1,
-      unit_price: Number(newPurchase.unit_price) || 0
     })
-    setNewPurchase({ date: new Date().toISOString().slice(0, 10), quantity: 1, unit_price: '', supplier: '', invoice: '', notes: '' })
+    setNewPurchase({ date: new Date().toISOString().slice(0, 10), quantity: 1, supplier: '', invoice: '', notes: '' })
     setShowAddForm(false)
-    toastService.success('Achat enregistré.')
+    toastService.success(t('pd.purchaseAdded'))
   }
 
   const sorted = [...(purchases || [])].sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -256,47 +240,46 @@ function PurchaseHistory({ purchases, productId, onAddPurchase }) {
             <ShoppingCart className="w-5 h-5 text-emerald-600" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Historique des achats</h3>
-            <p className="text-xs text-slate-400">{sorted.length} achat{sorted.length > 1 ? 's' : ''} • Total: {formatPrice(totalSpent)}</p>
+            <h3 className="text-sm font-bold text-slate-900">{t('pd.purchaseHistory')}</h3>
+            <p className="text-xs text-slate-400">{t('pd.purchases', { count: sorted.length })}</p>
           </div>
         </div>
+        {!readOnly && (
         <button
           onClick={() => setShowAddForm(!showAddForm)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          Ajouter
+          {t('pd.add')}
         </button>
+      )}
       </div>
 
-      {showAddForm && (
+      {!readOnly && showAddForm && (
         <div className="p-5 bg-blue-50/50 border-b border-blue-100 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date" required>
+            <Field label={t('pd.date')} required>
               <input type="date" value={newPurchase.date} onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))} className={inputClass} />
             </Field>
-            <Field label="Quantité">
+            <Field label={t('pd.quantity')}>
               <input type="number" min="1" value={newPurchase.quantity} onChange={(e) => setNewPurchase((p) => ({ ...p, quantity: e.target.value }))} className={inputClass} />
             </Field>
-            <Field label="Prix unitaire (€)">
-              <input type="number" step="0.01" min="0" value={newPurchase.unit_price} onChange={(e) => setNewPurchase((p) => ({ ...p, unit_price: e.target.value }))} placeholder="0.00" className={inputClass} />
+            <Field label={t('pd.supplier')} required>
+              <input type="text" value={newPurchase.supplier} onChange={(e) => setNewPurchase((p) => ({ ...p, supplier: e.target.value }))} placeholder={t('pd.supplierPlaceholder')} className={inputClass} />
             </Field>
-            <Field label="Fournisseur" required>
-              <input type="text" value={newPurchase.supplier} onChange={(e) => setNewPurchase((p) => ({ ...p, supplier: e.target.value }))} placeholder="Nom du fournisseur" className={inputClass} />
+            <Field label={t('pd.invoice')}>
+              <input type="text" value={newPurchase.invoice} onChange={(e) => setNewPurchase((p) => ({ ...p, invoice: e.target.value }))} placeholder={t('pd.invoicePlaceholder')} className={inputClass} />
             </Field>
-            <Field label="N° Facture">
-              <input type="text" value={newPurchase.invoice} onChange={(e) => setNewPurchase((p) => ({ ...p, invoice: e.target.value }))} placeholder="FAC-2025-XXXX" className={inputClass} />
-            </Field>
-            <Field label="Notes">
-              <input type="text" value={newPurchase.notes} onChange={(e) => setNewPurchase((p) => ({ ...p, notes: e.target.value }))} placeholder="Notes optionnelles" className={inputClass} />
+            <Field label={t('pd.notes')}>
+              <input type="text" value={newPurchase.notes} onChange={(e) => setNewPurchase((p) => ({ ...p, notes: e.target.value }))} placeholder={t('pd.notesPlaceholder')} className={inputClass} />
             </Field>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={() => setShowAddForm(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-              Annuler
+              {t('common.cancel')}
             </button>
             <button onClick={handleSubmit} className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
-              Enregistrer
+              {t('common.save')}
             </button>
           </div>
         </div>
@@ -306,10 +289,10 @@ function PurchaseHistory({ purchases, productId, onAddPurchase }) {
         {sorted.length === 0 ? (
           <div className="p-8 text-center">
             <ShoppingCart className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-            <p className="text-sm text-slate-400">Aucun achat enregistré</p>
+            <p className="text-sm text-slate-400">{t('pd.noPurchase')}</p>
           </div>
         ) : (
-          sorted.map((purchase, idx) => (
+          sorted.map((purchase) => (
             <div key={purchase.id} className="p-4 hover:bg-slate-50/50 transition-colors">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0 mt-0.5">
@@ -318,15 +301,13 @@ function PurchaseHistory({ purchases, productId, onAddPurchase }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm font-semibold text-slate-900">{purchase.supplier}</p>
-                    <p className="text-sm font-bold text-slate-900">{formatPrice(purchase.quantity * purchase.unit_price)}</p>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-500">
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {formatDateShort(purchase.date)}
+                      {formatDate(purchase.date, { day: '2-digit', month: 'short', year: 'numeric' })}
                     </span>
                     <span>×{purchase.quantity}</span>
-                    {purchase.unit_price > 0 && <span>@ {formatPrice(purchase.unit_price)}</span>}
                     {purchase.invoice && (
                       <span className="inline-flex items-center gap-1 text-blue-600 font-medium">
                         <FileText className="w-3 h-3" />
@@ -350,9 +331,12 @@ function PurchaseHistory({ purchases, productId, onAddPurchase }) {
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const { getProduct, updateProduct, addPurchase, deleteProduct } = useProducts()
+  const { t, formatDate } = useI18n()
   const product = getProduct(id)
 
+  const canManage = user?.role === 'admin' || user?.role === 'manager'
   const [editing, setEditing] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [editData, setEditData] = useState({})
@@ -362,10 +346,10 @@ export default function ProductDetail() {
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-3xl mx-auto text-center py-20">
           <Package className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Produit introuvable</h2>
-          <p className="text-sm text-slate-500 mb-6">Ce produit n'existe pas ou a été supprimé.</p>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">{t('pd.notFound')}</h2>
+          <p className="text-sm text-slate-500 mb-6">{t('pd.notFoundDesc')}</p>
           <button onClick={() => navigate('/products')} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors">
-            Retour aux produits
+            {t('pd.backToProducts')}
           </button>
         </div>
       </div>
@@ -383,7 +367,6 @@ export default function ProductDetail() {
       brand: product.brand || '',
       category: product.category || 'Autre',
       description: product.description || '',
-      price: product.price || 0,
       warranty_months: product.warranty_months || '',
       warranty_purchase_date: product.warranty_purchase_date || '',
       serial_number: product.serial_number || '',
@@ -395,11 +378,10 @@ export default function ProductDetail() {
   const saveEdit = () => {
     updateProduct(product.id, {
       ...editData,
-      price: Number(editData.price) || 0,
       warranty_months: editData.warranty_months ? Number(editData.warranty_months) : null
     })
     setEditing(false)
-    toastService.success('Produit mis à jour.')
+    toastService.success(t('pd.updated'))
   }
 
   const handleImageChange = (newImageUrl) => {
@@ -417,7 +399,7 @@ export default function ProductDetail() {
           className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Retour aux produits
+          {t('pd.backToProducts')}
         </button>
 
         <div className="flex items-center justify-between gap-4">
@@ -427,51 +409,53 @@ export default function ProductDetail() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{product.name}</h1>
-              <p className="text-sm text-slate-500">Réf: {product.reference} • {product.brand}</p>
+              <p className="text-sm text-slate-500">{t('pd.ref', { ref: product.reference })} • {product.brand}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {editing ? (
+            {canManage && (editing ? (
               <>
                 <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
-                  Annuler
+                  {t('common.cancel')}
                 </button>
                 <button onClick={saveEdit} className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/20 transition-all">
                   <Save className="w-4 h-4" />
-                  Enregistrer
+                  {t('common.save')}
                 </button>
               </>
             ) : (
               <>
                 <button onClick={startEditing} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors">
                   <Edit3 className="w-4 h-4" />
-                  Modifier
+                  {t('common.modify')}
                 </button>
                 <button onClick={() => setShowDeleteModal(true)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </>
-            )}
+            ))}
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 custom-shadow p-6">
-              <ImageUploader
-                currentImage={editing ? editData.image_url : product.image_url}
-                onImageChange={editing ? (url) => setEditData((d) => ({ ...d, image_url: url })) : handleImageChange}
-                productName={product.name}
-                category={product.category}
-              />
-            </div>
+            {canManage && (
+              <div className="bg-white rounded-2xl border border-slate-200 custom-shadow p-6">
+                <ImageUploader
+                  currentImage={editing ? editData.image_url : product.image_url}
+                  onImageChange={editing ? (url) => setEditData((d) => ({ ...d, image_url: url })) : handleImageChange}
+                  productName={product.name}
+                  category={product.category}
+                />
+              </div>
+            )}
 
             <div className="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
               <div className="p-5 border-b border-slate-100 flex items-center gap-2.5">
                 <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center">
                   <FileText className="w-5 h-5 text-blue-600" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Description</h3>
+                <h3 className="text-sm font-bold text-slate-900">{t('pd.description')}</h3>
               </div>
               <div className="p-5">
                 {editing ? (
@@ -480,10 +464,10 @@ export default function ProductDetail() {
                     onChange={(e) => setEditData((d) => ({ ...d, description: e.target.value }))}
                     rows={4}
                     className={`${inputClass} resize-none`}
-                    placeholder="Description du produit..."
+                    placeholder={t('pd.descriptionPlaceholder')}
                   />
                 ) : (
-                  <p className="text-sm text-slate-600 leading-relaxed">{product.description || 'Aucune description disponible.'}</p>
+                  <p className="text-sm text-slate-600 leading-relaxed">{product.description || t('pd.noDescription')}</p>
                 )}
               </div>
             </div>
@@ -492,6 +476,7 @@ export default function ProductDetail() {
               purchases={product.purchases}
               productId={product.id}
               onAddPurchase={addPurchase}
+              readOnly={!canManage}
             />
           </div>
 
@@ -501,58 +486,55 @@ export default function ProductDetail() {
                 <div className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center">
                   <Tag className="w-5 h-5 text-slate-600" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Informations</h3>
+                <h3 className="text-sm font-bold text-slate-900">{t('pd.info')}</h3>
               </div>
               <div className="p-5 space-y-3">
                 {editing ? (
                   <>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Nom</label>
+                      <label className={labelClass}>{t('pd.name')}</label>
                       <input type="text" value={editData.name} onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Référence</label>
+                      <label className={labelClass}>{t('pd.reference')}</label>
                       <input type="text" value={editData.reference} onChange={(e) => setEditData((d) => ({ ...d, reference: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Marque</label>
+                      <label className={labelClass}>{t('pd.brand')}</label>
                       <input type="text" value={editData.brand} onChange={(e) => setEditData((d) => ({ ...d, brand: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Catégorie</label>
+                      <label className={labelClass}>{t('pd.category')}</label>
                       <select value={editData.category} onChange={(e) => setEditData((d) => ({ ...d, category: e.target.value }))} className={`${inputClass} cursor-pointer`}>
-                        {PRODUCT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        {PRODUCT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{t(`pcat.${c.value}`)}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Numéro de série</label>
+                      <label className={labelClass}>{t('pd.serial')}</label>
                       <input type="text" value={editData.serial_number} onChange={(e) => setEditData((d) => ({ ...d, serial_number: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Modèle</label>
+                      <label className={labelClass}>{t('pd.model')}</label>
                       <input type="text" value={editData.model} onChange={(e) => setEditData((d) => ({ ...d, model: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Prix unitaire (€)</label>
-                      <input type="number" step="0.01" min="0" value={editData.price} onChange={(e) => setEditData((d) => ({ ...d, price: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Durée garantie (mois)</label>
+                      <label className={labelClass}>{t('pd.warrantyMonths')}</label>
                       <input type="number" min="0" value={editData.warranty_months} onChange={(e) => setEditData((d) => ({ ...d, warranty_months: e.target.value }))} className={inputClass} />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Date d'achat</label>
+                      <label className={labelClass}>{t('pd.purchaseDate')}</label>
                       <input type="date" value={editData.warranty_purchase_date} onChange={(e) => setEditData((d) => ({ ...d, warranty_purchase_date: e.target.value }))} className={inputClass} />
                     </div>
                   </>
                 ) : (
                   <>
-                    <InfoRow icon={<Tag className="w-4 h-4" />} label="Référence" value={product.reference} />
-                    <InfoRow icon={<Building2 className="w-4 h-4" />} label="Marque" value={product.brand} />
-                    <InfoRow icon={<Package className="w-4 h-4" />} label="Catégorie" value={catObj?.label || product.category} />
-                    {product.serial_number && <InfoRow icon={<Hash className="w-4 h-4" />} label="S/N" value={product.serial_number} />}
-                    {product.model && <InfoRow icon={<Monitor className="w-4 h-4" />} label="Modèle" value={product.model} />}
-                    <InfoRow icon={<DollarSign className="w-4 h-4" />} label="Prix" value={formatPrice(product.price)} highlight />
+                    <InfoRow icon={<Tag className="w-4 h-4" />} label={t('pd.reference')} value={product.reference} />
+                    <InfoRow icon={<Building2 className="w-4 h-4" />} label={t('pd.brand')} value={product.brand} />
+                    <InfoRow icon={<Package className="w-4 h-4" />} label={t('pd.category')} value={t(`pcat.${product.category}`)} />
+                    {product.serial_number && <InfoRow icon={<Hash className="w-4 h-4" />} label={t('pd.sn')} value={product.serial_number} />}
+                    {product.model && <InfoRow icon={<Monitor className="w-4 h-4" />} label={t('pd.model')} value={product.model} />}
                   </>
                 )}
               </div>
@@ -565,11 +547,11 @@ export default function ProductDetail() {
             <div className="bg-white rounded-2xl border border-slate-200 custom-shadow p-5 space-y-2">
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Créé le {formatDate(product.createdAt)}</span>
+                <span>{t('pd.createdOn', { date: formatDate(product.createdAt) })}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Modifié le {formatDate(product.updatedAt)}</span>
+                <span>{t('pd.updatedOn', { date: formatDate(product.updatedAt) })}</span>
               </div>
             </div>
           </div>
@@ -580,9 +562,9 @@ export default function ProductDetail() {
         open={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         onConfirm={() => { deleteProduct(product.id); navigate('/products') }}
-        title="Supprimer le produit"
-        message={`Êtes-vous sûr de vouloir supprimer "${product.name}" ? Cette action est irréversible.`}
-        confirmLabel="Supprimer"
+        title={t('pd.deleteTitle')}
+        message={t('pd.deleteMessage', { name: product.name })}
+        confirmLabel={t('common.delete')}
       />
     </div>
   )

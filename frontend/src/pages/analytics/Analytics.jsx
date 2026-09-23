@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw, Database, Clock, BarChart3, Smile, Package, TrendingUp, CalendarRange } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw, Database, Clock, BarChart3, Package, TrendingUp, CalendarRange } from 'lucide-react'
 import StatCard from '../../components/dashboard/StatCard'
-import { useAuth } from '../../contexts/useAuth'
-import { getMetricsRequest } from '../../api/analytics'
-import { StatusBarChart, SatisfactionChart, IncidentsChart, TrendChart } from '../../components/analytics/charts'
+import { useProducts } from '../../contexts/useProducts'
+import { useTickets } from '../../contexts/useTickets'
+import { buildAnalyticsMetrics } from '../../services/analyticsMetrics'
+import { StatusBarChart, IncidentsChart, TrendChart } from '../../components/analytics/charts'
 
 const REFRESH_INTERVAL_MS = 30000
 
@@ -66,41 +67,28 @@ function Skeleton({ className }) {
 }
 
 function Analytics() {
-  const { user } = useAuth()
-  const token = user?.access_token || user?.token || null
+  const { tickets, error: ticketsError, reload: reloadTickets } = useTickets()
+  const { products, error: productsError, reload: reloadProducts } = useProducts()
 
-  const [metrics, setMetrics] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
-  const [live, setLive] = useState(false)
   const [period, setPeriod] = useState('week')
   const [customRange, setCustomRange] = useState(defaultCustomRange)
-  const abortRef = useRef(null)
-
+  const live = !loading && !ticketsError && !productsError
+  const metrics = buildAnalyticsMetrics({ tickets, products, period, from: customRange.from, to: customRange.to })
   const load = useCallback(async ({ background = false } = {}) => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
     if (background) setRefreshing(true)
-
-    const query = { token, signal: controller.signal, period, from: customRange.from, to: customRange.to }
-
     try {
-      const data = await getMetricsRequest(query)
-      setMetrics(data)
-      setLive(true)
-    } catch (err) {
-      if (err.name === 'AbortError') return
-      setLive(false)
-      setMetrics(null)
+      await Promise.all([reloadTickets(), reloadProducts()])
+    } catch {
+      // Les contextes conservent leur dernière erreur et leurs données disponibles.
     } finally {
       setLoading(false)
       setRefreshing(false)
       setLastUpdated(new Date())
     }
-  }, [token, period, customRange])
+  }, [reloadTickets, reloadProducts])
 
   useEffect(() => {
     const initial = setTimeout(() => load(), 0)
@@ -120,16 +108,14 @@ function Analytics() {
       clearInterval(timer)
       window.removeEventListener('focus', refreshOnFocus)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
-      abortRef.current?.abort()
     }
   }, [load])
 
   const stats = metrics
-    ? {
-        open: (metrics.tickets_by_status?.open ?? 0) + (metrics.tickets_by_status?.in_progress ?? 0),
-        avgHours: formatHours(metrics.avg_resolution_hours),
-        csat: `${Number(metrics.csat?.score ?? 0).toFixed(1)}/5`,
-      }
+      ? {
+          open: (metrics.tickets_by_status?.open ?? 0) + (metrics.tickets_by_status?.in_progress ?? 0),
+          avgHours: formatHours(metrics.avg_resolution_hours),
+        }
     : null
 
   const periodLabel =
@@ -168,7 +154,7 @@ function Analytics() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Tableau de bord Responsable SAV</h1>
             <p className="text-slate-500 mt-1">
-              Performance du service : tickets, délais de résolution, satisfaction et incidents par produit.
+               Performance du service : tickets, délais de résolution et incidents par produit.
             </p>
             <div className="flex items-center gap-3 mt-3">
               <span
@@ -186,7 +172,7 @@ function Analytics() {
                   />
                   <span className={`relative inline-flex rounded-full h-2 w-2 ${live ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                 </span>
-                 {live ? 'Temps réel' : 'API indisponible'}
+                 {live ? 'Temps réel' : 'Mode démo'}
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-medium">
                 <Clock className="w-3.5 h-3.5" />
@@ -194,7 +180,7 @@ function Analytics() {
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-medium">
                 <Database className="w-3.5 h-3.5" />
-                {live ? 'API connectée' : 'API indisponible'}
+                 {live ? 'API connectée' : 'Données de démonstration'}
               </span>
             </div>
           </div>
@@ -254,14 +240,13 @@ function Analytics() {
 
         {/* KPIs */}
         {loading && !metrics ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Skeleton className="h-36" />
-            <Skeleton className="h-36" />
-            <Skeleton className="h-36" />
-            <Skeleton className="h-36" />
-          </div>
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+             <Skeleton className="h-36" />
+             <Skeleton className="h-36" />
+             <Skeleton className="h-36" />
+           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <StatCard
               title="Total Tickets"
               value={metrics?.total_tickets ?? '—'}
@@ -283,29 +268,15 @@ function Analytics() {
               icon="timer"
               color="indigo"
             />
-            <StatCard
-              title="Taux de satisfaction"
-              value={stats?.csat ?? '—'}
-              subtitle={`${metrics?.csat?.rated_count ?? 0} évaluations reçues`}
-              icon="percent"
-              color="teal"
-            />
           </div>
         )}
 
         {/* Graphiques */}
         {metrics && (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2">
-                <ChartCard title="Tickets par statut" subtitle={`Répartition des tickets (${periodLabel})`} icon={BarChart3}>
-                  <StatusBarChart data={metrics.tickets_by_status} />
-                </ChartCard>
-              </div>
-              <ChartCard title="Satisfaction client" subtitle="Score global sur les tickets évalués" icon={Smile}>
-                <SatisfactionChart csat={metrics.csat} />
-              </ChartCard>
-            </div>
+            <ChartCard title="Tickets par statut" subtitle={`Répartition des tickets (${periodLabel})`} icon={BarChart3}>
+              <StatusBarChart data={metrics.tickets_by_status} />
+            </ChartCard>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2">

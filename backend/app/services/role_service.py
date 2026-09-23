@@ -32,6 +32,16 @@ class RoleService:
         result = await self.session.execute(select(Role).where(Role.name == name))
         return result.scalar_one_or_none()
 
+    async def list_roles(self, names: list[str] | None = None) -> list[Role]:
+        """Liste les rôles applicatifs, éventuellement filtrés par nom."""
+
+        query = select(Role)
+        if names is not None:
+            query = query.where(Role.name.in_(names))
+
+        result = await self.session.execute(query.order_by(Role.name))
+        return list(result.scalars().all())
+
     async def create_role(self, data: RoleCreate) -> Role:
         """Crée un rôle avec un nom unique."""
 

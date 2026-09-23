@@ -23,6 +23,25 @@ export const ROLES = {
 
 export const ROLE_ORDER = ['admin', 'manager', 'agent', 'client']
 
+// Rôles qu'un membre du staff peut attribuer à un compte (miroir frontend de
+// backend/app/core/permissions.py::can_manage_role) :
+// - admin : tous les rôles, y compris un autre administrateur ;
+// - manager (responsable SAV) : technicien (agent support) et client.
+export const MANAGEABLE_ROLES = {
+  admin: ROLE_ORDER,
+  manager: ['agent', 'client'],
+  agent: [],
+}
+
+export function manageableRoles(user) {
+  if (!user) return []
+  return MANAGEABLE_ROLES[user.role] || []
+}
+
+export function canManageRole(user, targetRole) {
+  return manageableRoles(user).includes(targetRole)
+}
+
 // Correspondance entre les noms de rôles du backend (français) et les clés
 // utilisées côté frontend.
 export const BACKEND_ROLE_TO_KEY = {
@@ -37,17 +56,21 @@ export function resolveRole(role) {
   if (!role) return undefined
   const name = typeof role === 'object' ? role?.name : role
   if (!name) return undefined
-  const key = String(name).toLowerCase()
+  const key = String(name).toLowerCase().trim().replace(/[ -]+/g, '_')
   return BACKEND_ROLE_TO_KEY[key] || key
 }
 
-// Libellé lisible d'un rôle pour l'affichage.
+// Libellé lisible d'un rôle pour l'affichage. Accepte un nom backend, une clé
+// frontend ou un objet rôle (ex: { name: 'client' }) et ne renvoie jamais
+// d'objet, uniquement une chaîne de caractères.
 export function roleLabel(role) {
-  return ROLES[role]?.label || role
+  const key = resolveRole(role)
+  if (!key) return ''
+  return ROLES[key]?.label || key
 }
 
 export const PERMISSIONS = {
-  'admin.view': ['admin', 'agent'],
+  'admin.view': ['admin'],
   'analytics.view': ['admin', 'manager', 'agent'],
   'users.manage': ['admin', 'manager'],
   'documents.manage': ['admin', 'manager', 'agent'],

@@ -8,7 +8,11 @@ function loadStoredUser() {
   if (!stored) return null
   try {
     const user = JSON.parse(stored)
-    if (user && typeof user.role === 'string') {
+    if (String(user?.access_token || '').startsWith('fake-token-')) {
+      localStorage.removeItem('auth_user')
+      return null
+    }
+if (user && typeof user.role !== 'string') {
       user.role = resolveRole(user.role)
     }
     return user
@@ -63,7 +67,8 @@ export function AuthProvider({ children }) {
         .join('')
         .toUpperCase()
         .slice(0, 2)
-      return { ...prev, ...updates, name, initials }
+      const role = updates.role !== undefined ? resolveRole(updates.role) || prev.role : prev.role
+      return { ...prev, ...updates, name, initials, role }
     })
     return true
   }

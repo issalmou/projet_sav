@@ -18,30 +18,23 @@ import {
 } from '../../components/admin/ui'
 import { useToast } from '../../services/toast'
 import { SeverityBadge } from '../../components/admin/badges'
+import { useI18n } from '../../i18n/useI18n'
 
 const CATEGORIES = [
-  { value: 'users', label: 'Utilisateurs' },
-  { value: 'documents', label: 'Documents' },
-  { value: 'integrations', label: 'Intégrations' },
-  { value: 'settings', label: 'Paramètres' },
-  { value: 'logs', label: 'Journal' },
-  { value: 'auth', label: 'Authentification' },
+  { value: 'users', labelKey: 'admin.logs.catUsers' },
+  { value: 'tickets', labelKey: 'admin.logs.catTickets' },
+  { value: 'products', labelKey: 'admin.logs.catProducts' },
+  { value: 'documents', labelKey: 'admin.logs.catDocuments' },
+  { value: 'integrations', labelKey: 'admin.logs.catIntegrations' },
+  { value: 'settings', labelKey: 'admin.logs.catSettings' },
+  { value: 'logs', labelKey: 'admin.logs.catLogs' },
+  { value: 'auth', labelKey: 'admin.logs.catAuth' },
 ]
 
 const PAGE_SIZE = 10
 
-function formatDateTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function AdminLogs() {
+  const { t, formatDate } = useI18n()
   const { logs, clearLogs } = useAdmin()
   const { user } = useAuth()
   const { toastEl, showToast } = useToast()
@@ -104,9 +97,25 @@ function AdminLogs() {
   }
 
   const exportCSV = () => {
-    const headers = ['Date', 'Action', 'Catégorie', 'Acteur', 'Rôle', 'Cible', 'Détails', 'Sévérité', 'IP']
+    const headers = [
+      t('admin.logs.csvDate'),
+      t('admin.logs.csvAction'),
+      t('admin.logs.csvCategory'),
+      t('admin.logs.csvActor'),
+      t('admin.logs.csvRole'),
+      t('admin.logs.csvTarget'),
+      t('admin.logs.csvDetails'),
+      t('admin.logs.csvSeverity'),
+      'IP',
+    ]
     const rows = filtered.map((l) => [
-      formatDateTime(l.createdAt),
+      formatDate(l.createdAt, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
       l.action,
       l.category,
       `"${l.actor.replace(/"/g, '""')}"`,
@@ -131,8 +140,8 @@ function AdminLogs() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Logs d\u2019activité"
-        subtitle="Suivez toutes les actions réalisées sur la plateforme."
+        title={t('admin.nav.logs')}
+        subtitle={t('admin.logs.subtitle')}
         actions={
           <>
             <button
@@ -141,7 +150,7 @@ function AdminLogs() {
               className="px-4 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
-              Exporter CSV
+              {t('admin.logs.exportCsv')}
             </button>
             {isAdmin(user) && (
               <button
@@ -149,7 +158,7 @@ function AdminLogs() {
                 className="px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
-                Vider le journal
+                {t('admin.logs.clear')}
               </button>
             )}
           </>
@@ -161,8 +170,8 @@ function AdminLogs() {
         <div className="flex items-center gap-3 px-5 py-4 bg-red-50 border border-red-200 rounded-2xl">
           <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
           <p className="text-sm text-red-700">
-            <strong className="font-bold">{criticalCount} événement(s) critique(s)</strong> détecté(s)
-            dans le journal. Vérifiez les actions récentes de type suppression, sécurité ou maintenance.
+            <strong className="font-bold">{t('admin.logs.criticalCount', { count: criticalCount })}</strong>{' '}
+            {t('admin.logs.criticalText')}
           </p>
         </div>
       )}
@@ -178,7 +187,7 @@ function AdminLogs() {
                 setSearch(e.target.value)
                 setPage(1)
               }}
-              placeholder="Rechercher une action, un acteur, une cible..."
+              placeholder={t('admin.logs.search')}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
@@ -192,10 +201,10 @@ function AdminLogs() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Toutes les catégories</option>
+              <option value="all">{t('admin.logs.allCategories')}</option>
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
-                  {c.label}
+                  {t(c.labelKey)}
                 </option>
               ))}
             </select>
@@ -211,10 +220,10 @@ function AdminLogs() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Toutes les sévérités</option>
-              <option value="critical">Critiques</option>
-              <option value="warning">Avertissements</option>
-              <option value="info">Infos</option>
+              <option value="all">{t('admin.logs.allSeverities')}</option>
+              <option value="critical">{t('admin.logs.sevCritical')}</option>
+              <option value="warning">{t('admin.logs.sevWarning')}</option>
+              <option value="info">{t('admin.logs.sevInfo')}</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
@@ -228,7 +237,7 @@ function AdminLogs() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Tous les utilisateurs</option>
+              <option value="all">{t('admin.logs.allUsers')}</option>
               {users.map((u) => (
                 <option key={u} value={u}>
                   {u}
@@ -247,7 +256,7 @@ function AdminLogs() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Toutes les actions</option>
+              <option value="all">{t('admin.logs.allActions')}</option>
               {actions.map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -264,7 +273,7 @@ function AdminLogs() {
               setDateFrom(e.target.value)
               setPage(1)
             }}
-            title="Du"
+            title={t('admin.logs.from')}
             className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
           />
 
@@ -275,13 +284,13 @@ function AdminLogs() {
               setDateTo(e.target.value)
               setPage(1)
             }}
-            title="Au"
+            title={t('admin.logs.to')}
             className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
           />
 
           <button
             onClick={resetFilters}
-            title="Réinitialiser"
+            title={t('admin.logs.allCategories')}
             className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -289,21 +298,21 @@ function AdminLogs() {
         </div>
 
         <div className="px-5 py-3 flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-          <span className="hidden sm:inline shrink-0 w-32">Date</span>
-          <span className="flex-1">Événement</span>
-          <span className="hidden lg:inline shrink-0 w-28">Catégorie</span>
-          <span className="shrink-0 w-24">Sévérité</span>
-          <span className="hidden md:inline shrink-0 w-24">IP</span>
+          <span className="hidden sm:inline shrink-0 w-32">{t('admin.logs.date')}</span>
+          <span className="flex-1">{t('admin.logs.event')}</span>
+          <span className="hidden lg:inline shrink-0 w-28">{t('common.category')}</span>
+          <span className="shrink-0 w-24">{t('admin.logs.severity')}</span>
+          <span className="hidden md:inline shrink-0 w-24">{t('admin.logs.ip')}</span>
         </div>
 
         {filtered.length === 0 ? (
           <EmptyState
             icon={ActivityIcon}
-            title="Aucun log trouvé"
+            title={t('admin.logs.none')}
             message={
               logs.length === 0
-                ? "Le journal est vide. Les actions seront enregistrées ici."
-                : "Aucun log ne correspond à vos critères."
+                ? t('admin.logs.empty')
+                : t('admin.logs.emptyFiltered')
             }
           />
         ) : (
@@ -313,7 +322,13 @@ function AdminLogs() {
               className="px-5 py-4 border-b border-slate-100 hover:bg-slate-50 transition-colors flex items-start gap-4"
             >
               <div className="hidden sm:inline shrink-0 w-32 text-xs text-slate-500 pt-0.5">
-                {formatDateTime(log.createdAt)}
+                {formatDate(log.createdAt, {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-900">{log.details}</p>
@@ -323,12 +338,14 @@ function AdminLogs() {
                     {log.action}
                   </span>
                   {log.target && (
-                    <span className="text-[10px] font-mono text-slate-400">cible : {log.target}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{t('admin.logs.target', { target: log.target })}</span>
                   )}
                 </div>
               </div>
               <div className="hidden lg:inline shrink-0 w-28 text-xs text-slate-500 capitalize">
-                {CATEGORIES.find((c) => c.value === log.category)?.label || log.category}
+                {CATEGORIES.find((c) => c.value === log.category)?.labelKey
+                  ? t(CATEGORIES.find((c) => c.value === log.category).labelKey)
+                  : log.category}
               </div>
               <div className="shrink-0 w-24">
                 <SeverityBadge severity={log.severity} />
@@ -344,12 +361,11 @@ function AdminLogs() {
       {filtered.length > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-slate-500">
-            Affichage de{' '}
-            <span className="font-semibold text-slate-700">{(currentPage - 1) * PAGE_SIZE + 1}</span> à{' '}
-            <span className="font-semibold text-slate-700">
-              {Math.min(currentPage * PAGE_SIZE, filtered.length)}
-            </span>{' '}
-            sur {filtered.length} log(s)
+            {t('admin.logs.showing', {
+              from: (currentPage - 1) * PAGE_SIZE + 1,
+              to: Math.min(currentPage * PAGE_SIZE, filtered.length),
+              total: filtered.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -357,7 +373,7 @@ function AdminLogs() {
               disabled={currentPage === 1}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Précédent
+              {t('tickets.previous')}
             </button>
             {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
               <button
@@ -377,7 +393,7 @@ function AdminLogs() {
               disabled={currentPage === pageCount}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Suivant
+              {t('tickets.next')}
             </button>
           </div>
         </div>
@@ -386,11 +402,11 @@ function AdminLogs() {
       <ConfirmModal
         open={confirmClear}
         onClose={() => setConfirmClear(false)}
-        title="Vider le journal d'activité"
-        message="Tous les événements du journal seront définitivement supprimés. Cette action est irréversible."
+        title={t('admin.logs.clearTitle')}
+        message={t('admin.logs.clearMsg')}
         onConfirm={() => {
           clearLogs()
-          showToast('Le journal a été vidé')
+          showToast(t('admin.logs.cleared'))
         }}
       />
 

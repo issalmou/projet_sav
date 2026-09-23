@@ -87,6 +87,60 @@ async def test_me_with_deactivated_account_is_403(client, db_session, auth_user)
 
 
 @pytest.mark.asyncio
+async def test_patch_me_updates_own_profile(client, auth_user):
+    user, password = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    response = await client.patch(
+        "/api/v1/auth/me",
+        headers=headers,
+        json={"full_name": "Nouveau Nom", "phone_number": "+33612345678"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["full_name"] == "Nouveau Nom"
+    assert body["phone_number"] == "+33612345678"
+    assert body["email"] == user.email
+
+
+@pytest.mark.asyncio
+async def test_patch_me_forbids_role_and_status_changes(client, auth_user):
+    user, password = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})
+    access_token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    response = await client.patch(
+        "/api/v1/auth/me", headers=headers, json={"is_active": False}
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_put_me_changes_password(client, auth_user):
+    user, _ = auth_user
+    login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": "ValidPass1"})
+    access_token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    response = await client.put(
+        "/api/v1/auth/me", headers=headers, json={"password": "NewPass1"}
+    )
+
+    assert response.status_code == 200
+
+    old_login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": "ValidPass1"})
+    assert old_login.status_code == 401
+
+    new_login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": "NewPass1"})
+    assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_refresh_with_refresh_token_returns_new_access_token(client, auth_user):
     user, password = auth_user
     login = await client.post("/api/v1/auth/login", json={"email": user.email, "password": password})

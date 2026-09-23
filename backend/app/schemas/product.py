@@ -39,4 +39,28 @@ class ProductRead(ProductBase):
     updated_at: datetime
 
 
-__all__ = ["ProductBase", "ProductCreate", "ProductUpdate", "ProductRead"]
+class ProductWarrantyRead(BaseModel):
+    """Garantie d'un produit (propriété statique `Product.warranty_months`)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    reference: str
+    name: str
+    warranty_months: int | None
+
+
+class WarrantyUpdate(BaseModel):
+    """Données attendues pour modifier la garantie d'un produit."""
+
+    warranty_months: int = Field(ge=0)
+
+
+__all__ = [
+    "ProductBase",
+    "ProductCreate",
+    "ProductRead",
+    "ProductUpdate",
+    "ProductWarrantyRead",
+    "WarrantyUpdate",
+]

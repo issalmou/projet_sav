@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, FileText, Save, UploadCloud, X } from 'lucide-react'
 import { useAdmin } from '../../contexts/useAdmin'
 import { Field, inputClass } from '../../components/admin/ui'
+import { useI18n } from '../../i18n/useI18n'
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 const ACCEPTED_EXT = '.pdf,.png,.jpg,.jpeg,.webp'
@@ -20,21 +21,22 @@ function formatFileSize(bytes) {
 }
 
 const DOC_TYPES = [
-  { value: 'faq', label: 'FAQ' },
-  { value: 'manual', label: 'Manuel' },
-  { value: 'guide', label: 'Guide' },
+  { value: 'faq', labelKey: 'admin.docTypes.faq' },
+  { value: 'manual', labelKey: 'admin.docTypes.manual' },
+  { value: 'guide', labelKey: 'admin.docTypes.guide' },
 ]
 
 const CATEGORIES = ['Configuration', 'Dépannage', 'Manuels', 'Guides', 'Comptes & Facturation', 'Sécurité']
 
 const LANGUAGES = [
-  { value: 'fr', label: 'Français' },
-  { value: 'en', label: 'Anglais' },
+  { value: 'fr', labelKey: 'admin.langs.fr' },
+  { value: 'en', labelKey: 'admin.langs.en' },
 ]
 
-export default function DocumentForm() {
+export default function DocumentForm({ basePath = '/admin' }) {
   const navigate = useNavigate()
   const { id } = useParams()
+  const { t } = useI18n()
   const { documents, createDocument, updateDocument } = useAdmin()
 
   const editing = documents.find((d) => d.id === id)
@@ -59,15 +61,15 @@ export default function DocumentForm() {
     const files = Array.from(fileList || [])
     for (const file of files) {
       if (!ACCEPTED_TYPES.includes(file.type)) {
-        setUploadError(`Type non pris en charge : ${file.name}. Formats acceptés : PDF, PNG, JPG, WEBP.`)
+        setUploadError(`${t('admin.documents.uploadTypeError', { name: file.name })}`)
         continue
       }
       if (file.size > MAX_FILE_SIZE) {
-        setUploadError(`Fichier trop volumineux : ${file.name} (2 Mo max).`)
+        setUploadError(`${t('admin.documents.uploadSizeError', { name: file.name })}`)
         continue
       }
       if (attachments.length >= MAX_FILES) {
-        setUploadError(`Nombre maximum de fichiers atteint (${MAX_FILES}).`)
+        setUploadError(`${t('admin.documents.uploadMaxError', { max: MAX_FILES })}`)
         return
       }
       const reader = new FileReader()
@@ -104,10 +106,10 @@ export default function DocumentForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const errs = {}
-    if (!formData.title.trim()) errs.title = 'Le titre est obligatoire.'
-    if (!formData.category) errs.category = 'La catégorie est obligatoire.'
-    if (!formData.content.trim()) errs.content = 'Le contenu est obligatoire.'
+const errs = {}
+    if (!formData.title.trim()) errs.title = t('admin.documents.titleRequired')
+    if (!formData.category) errs.category = t('admin.documents.categoryRequired')
+    if (!formData.content.trim()) errs.content = t('admin.documents.contentRequired')
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
 
@@ -121,19 +123,19 @@ export default function DocumentForm() {
       attachments,
       tags: formData.tags
         .split(',')
-        .map((t) => t.trim())
+        .map((tag) => tag.trim())
         .filter(Boolean),
     }
 
     if (isEdit) {
       updateDocument(id, payload)
-      navigate('/admin/documents', {
-        state: { toast: { message: `Le document « ${payload.title} » a été mis à jour` } },
+      navigate(`${basePath}/documents`, {
+        state: { toast: { message: t('admin.documents.updated', { title: payload.title }) } },
       })
     } else {
       createDocument(payload)
-      navigate('/admin/documents', {
-        state: { toast: { message: `Le document « ${payload.title} » a été créé` } },
+      navigate(`${basePath}/documents`, {
+        state: { toast: { message: t('admin.documents.created', { title: payload.title }) } },
       })
     }
   }
@@ -141,72 +143,72 @@ export default function DocumentForm() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <button
-        onClick={() => navigate('/admin/documents')}
+        onClick={() => navigate(`${basePath}/documents`)}
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
-        Retour à la base documentaire
+        {t('admin.documents.backToList')}
       </button>
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-          {isEdit ? 'Modifier le document' : 'Nouveau document'}
+          {isEdit ? t('admin.documents.editTitle') : t('admin.documents.newDocument')}
         </h1>
         <p className="text-slate-500">
           {isEdit
-            ? "Mettez à jour le contenu de la base documentaire."
-            : 'Ajoutez une FAQ, un manuel ou un guide à la base documentaire.'}
+            ? t('admin.documents.editSubtitle')
+            : t('admin.documents.createSubtitle')}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden">
         <div className="p-6 space-y-5">
-          <Field label="Titre" required error={errors.title}>
+          <Field label={t('admin.documents.title')} required error={errors.title}>
             <input
               type="text"
               value={formData.title}
               onChange={(e) => handleChange('title', e.target.value)}
-              placeholder="Ex : Comment réinitialiser mon appareil ?"
+              placeholder={t('admin.documents.titlePlaceholder')}
               className={inputClass}
             />
           </Field>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Type de document" required>
+            <Field label={t('admin.documents.docType')} required>
               <div className="grid grid-cols-3 gap-2">
-                {DOC_TYPES.map((t) => (
+                {DOC_TYPES.map((dt) => (
                   <button
-                    key={t.value}
+                    key={dt.value}
                     type="button"
-                    onClick={() => handleChange('type', t.value)}
+                    onClick={() => handleChange('type', dt.value)}
                     className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      formData.type === t.value
+                      formData.type === dt.value
                         ? 'bg-blue-50 text-blue-600 border-blue-200 ring-2 ring-offset-1 ring-blue-500'
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    {t.label}
+                    {t(dt.labelKey)}
                   </button>
                 ))}
               </div>
             </Field>
 
-            <Field label="Catégorie" required error={errors.category}>
+            <Field label={t('tf.category')} required error={errors.category}>
               <select
                 value={formData.category}
                 onChange={(e) => handleChange('category', e.target.value)}
                 className={`${inputClass} cursor-pointer`}
               >
-                <option value="">Sélectionner</option>
+                <option value="">{t('common.select')}</option>
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {t(`admin.docCategories.${c}`)}
                   </option>
                 ))}
               </select>
             </Field>
 
-            <Field label="Langue">
+            <Field label={t('admin.documents.language')}>
               <select
                 value={formData.language}
                 onChange={(e) => handleChange('language', e.target.value)}
@@ -214,17 +216,17 @@ export default function DocumentForm() {
               >
                 {LANGUAGES.map((l) => (
                   <option key={l.value} value={l.value}>
-                    {l.label}
+                    {t(l.labelKey)}
                   </option>
                 ))}
               </select>
             </Field>
 
-            <Field label="Statut">
+            <Field label={t('common.statu')}>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { value: 'published', label: 'Publié' },
-                  { value: 'draft', label: 'Brouillon' },
+                  { value: 'published', labelKey: 'admin.documents.publishedSingle' },
+                  { value: 'draft', labelKey: 'admin.documents.draftSingle' },
                 ].map((s) => (
                   <button
                     key={s.value}
@@ -238,36 +240,36 @@ export default function DocumentForm() {
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    {s.label}
+                    {t(s.labelKey)}
                   </button>
                 ))}
               </div>
             </Field>
           </div>
 
-          <Field label="Contenu" required error={errors.content}>
+          <Field label={t('admin.documents.content')} required error={errors.content}>
             <textarea
               value={formData.content}
               onChange={(e) => handleChange('content', e.target.value)}
-              placeholder="Rédigez le contenu du document..."
+              placeholder={t('admin.documents.contentPlaceholder')}
               rows={8}
               className={`${inputClass} resize-none leading-relaxed`}
             />
           </Field>
 
-          <Field label="Tags" hint="Séparez les tags par des virgules">
+          <Field label={t('admin.documents.tags')} hint={t('admin.documents.tagsHint')}>
             <input
               type="text"
               value={formData.tags}
               onChange={(e) => handleChange('tags', e.target.value)}
-              placeholder="Ex : configuration, dépannage, wifi"
+              placeholder={t('admin.documents.tagsPlaceholder')}
               className={inputClass}
             />
           </Field>
 
           <Field
-            label="Fichiers joints"
-            hint="PDF, PNG, JPG, WEBP — 2 Mo max par fichier, 3 fichiers max"
+            label={t('admin.documents.attachments')}
+            hint={t('admin.documents.attachmentsHint')}
           >
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -280,11 +282,11 @@ export default function DocumentForm() {
             >
               <UploadCloud className="w-8 h-8 text-slate-400" />
               <p className="text-sm font-semibold text-slate-600">
-                Glissez-déposez vos fichiers ici ou{' '}
-                <span className="text-blue-600">parcourir</span>
+                {t('admin.documents.drop')}{' '}
+                <span className="text-blue-600">{t('admin.documents.browse')}</span>
               </p>
               <p className="text-xs text-slate-400">
-                Formats acceptés : PDF, PNG, JPG, WEBP (2 Mo max par fichier)
+                {t('admin.documents.uploadHint')}
               </p>
               <input
                 ref={fileInputRef}
@@ -323,7 +325,7 @@ export default function DocumentForm() {
                     <button
                       type="button"
                       onClick={() => removeAttachment(att.id)}
-                      title="Retirer le fichier"
+                      title={t('admin.documents.removeFile')}
                       className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <X className="w-4 h-4" />
@@ -336,19 +338,19 @@ export default function DocumentForm() {
         </div>
 
         <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
-          <button
+<button
             type="button"
-            onClick={() => navigate('/admin/documents')}
+            onClick={() => navigate(`${basePath}/documents`)}
             className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-lg shadow-blue-500/20"
           >
             <Save className="w-4 h-4" />
-            {isEdit ? 'Enregistrer les modifications' : 'Créer le document'}
+            {isEdit ? t('tf.submitEdit') : t('admin.documents.create')}
           </button>
         </div>
       </form>

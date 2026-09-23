@@ -12,48 +12,58 @@ import {
   Zap,
   Clock,
   TrendingUp,
+  Ticket,
 } from 'lucide-react'
 import { useAdmin } from '../../contexts/useAdmin'
 import { useAuth } from '../../contexts/useAuth'
 import { can } from '../../contexts/roles'
+import { useI18n } from '../../i18n/useI18n'
 import { SeverityBadge, IntegrationBadge } from '../../components/admin/badges'
 
 const SECTION_CARDS = [
   {
-    label: 'Utilisateurs',
-    description: 'Ajouter, modifier et gérer les accès',
+    labelKey: 'admin.nav.tickets',
+    descKey: 'admin.overview.ticketsDesc',
+    path: '/admin/tickets',
+    icon: Ticket,
+    color: 'bg-cyan-50 text-cyan-600',
+    permission: 'admin.view',
+  },
+  {
+    labelKey: 'admin.nav.users',
+    descKey: 'admin.overview.usersDesc',
     path: '/admin/users',
     icon: Users,
     color: 'bg-violet-50 text-violet-600',
     permission: 'users.manage',
   },
   {
-    label: 'Base documentaire',
-    description: 'FAQ, manuels et guides',
+    labelKey: 'admin.nav.documents',
+    descKey: 'admin.overview.docsDesc',
     path: '/admin/documents',
     icon: BookOpen,
     color: 'bg-blue-50 text-blue-600',
     permission: 'documents.manage',
   },
   {
-    label: 'Intégrations CRM/ERP',
-    description: 'Connecter et configurer les systèmes',
+    labelKey: 'admin.overview.integrationsLabel',
+    descKey: 'admin.overview.integrationsDesc',
     path: '/admin/integrations',
     icon: Plug,
     color: 'bg-teal-50 text-teal-600',
     permission: 'integrations.manage',
   },
   {
-    label: 'Logs d\u2019activité',
-    description: 'Historique des actions système',
+    labelKey: 'admin.nav.logs',
+    descKey: 'admin.overview.logsDesc',
     path: '/admin/logs',
     icon: Activity,
     color: 'bg-amber-50 text-amber-600',
     permission: 'logs.view',
   },
   {
-    label: 'Paramètres',
-    description: 'Configuration générale de la plateforme',
+    labelKey: 'admin.nav.settings',
+    descKey: 'admin.overview.settingsDesc',
     path: '/admin/settings',
     icon: Settings,
     color: 'bg-slate-100 text-slate-600',
@@ -76,21 +86,10 @@ function StatCard({ icon: Icon, label, value, color, hint }) {
   )
 }
 
-function formatRelative(iso) {
-  if (!iso) return '—'
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `Il y a ${mins} min`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `Il y a ${hours} h`
-  const days = Math.floor(hours / 24)
-  return `Il y a ${days} j`
-}
-
 function AdminOverview() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { t, timeAgo } = useI18n()
   const { users, documents, integrations, logs } = useAdmin()
 
   const activeUsers = users.filter((u) => u.status === 'active').length
@@ -108,11 +107,10 @@ function AdminOverview() {
           <Zap className="w-48 h-48" />
         </div>
         <div className="relative z-10 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-blue-200">Panneau d'administration</p>
-          <h2 className="text-xl font-bold">Bonjour, {user?.name?.split(' ')[0] || 'Administrateur'}</h2>
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-200">{t('admin.overview.panel')}</p>
+          <h2 className="text-xl font-bold">{t('admin.overview.welcome', { name: user?.name?.split(' ')[0] || t('admin.overview.adminDefault') })}</h2>
           <p className="text-sm text-blue-100 max-w-xl leading-relaxed">
-            Centralisez la gestion de la plateforme : comptes utilisateurs, base documentaire,
-            intégrations CRM/ERP et journaux d'activité.
+            {t('admin.overview.bannerText')}
           </p>
         </div>
       </div>
@@ -121,30 +119,30 @@ function AdminOverview() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           icon={Users}
-          label="Utilisateurs actifs"
+          label={t('admin.overview.activeUsers')}
           value={activeUsers}
-          hint={`${users.length} au total`}
+          hint={t('admin.overview.usersTotal', { count: users.length })}
           color="bg-violet-50 text-violet-600"
         />
         <StatCard
           icon={BookOpen}
-          label="Documents publiés"
+          label={t('admin.overview.publishedDocs')}
           value={publishedDocs}
-          hint={`${documents.length} documents`}
+          hint={t('admin.overview.docsCount', { count: documents.length })}
           color="bg-blue-50 text-blue-600"
         />
         <StatCard
           icon={Plug}
-          label="Intégrations connectées"
+          label={t('admin.overview.connectedIntegrations')}
           value={connected}
-          hint={`${integrations.length} configurées`}
+          hint={t('admin.overview.integrationsCount', { count: integrations.length })}
           color="bg-teal-50 text-teal-600"
         />
         <StatCard
           icon={ShieldAlert}
-          label="Événements critiques"
+          label={t('admin.overview.criticalEvents')}
           value={criticalLogs}
-          hint="7 derniers jours"
+          hint={t('admin.overview.last7Days')}
           color="bg-red-50 text-red-600"
         />
       </div>
@@ -152,10 +150,10 @@ function AdminOverview() {
       {/* Quick access */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-900">Accès rapide</h2>
+          <h2 className="text-lg font-bold text-slate-900">{t('admin.overview.quickAccess')}</h2>
           <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
             <Clock className="w-3.5 h-3.5" />
-            Actions de gestion
+            {t('admin.overview.management')}
           </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -170,9 +168,9 @@ function AdminOverview() {
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                  {s.label}
+                  {t(s.labelKey)}
                 </h4>
-                <p className="text-xs text-slate-500 mt-0.5">{s.description}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{t(s.descKey)}</p>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0 mt-1" />
             </button>
@@ -186,17 +184,17 @@ function AdminOverview() {
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-slate-400" />
-              <h2 className="text-lg font-bold text-slate-900">Activité récente</h2>
+              <h2 className="text-lg font-bold text-slate-900">{t('admin.overview.recentActivity')}</h2>
             </div>
             <button
               onClick={() => navigate('/admin/logs')}
               className="text-sm font-semibold text-blue-600 hover:text-blue-700"
             >
-              Voir tous les logs
+              {t('admin.overview.viewAllLogs')}
             </button>
           </div>
           {recentLogs.length === 0 ? (
-            <p className="p-8 text-center text-sm text-slate-400">Aucune activité récente.</p>
+            <p className="p-8 text-center text-sm text-slate-400">{t('admin.overview.noActivity')}</p>
           ) : (
             <div className="divide-y divide-slate-50">
               {recentLogs.map((log) => (
@@ -206,7 +204,7 @@ function AdminOverview() {
                     <div className="flex items-center justify-between mb-0.5">
                       <h4 className="text-sm font-bold text-slate-900 truncate">{log.details}</h4>
                       <span className="text-xs text-slate-400 shrink-0 ml-3">
-                        {formatRelative(log.createdAt)}
+                        {timeAgo(log.createdAt)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -229,16 +227,16 @@ function AdminOverview() {
         {/* Side panel: integration health + quick actions */}
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 custom-shadow space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">Santé des intégrations</h3>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-widest">{t('admin.overview.health')}</h3>
             {integrations.length === 0 ? (
-              <p className="text-sm text-slate-400">Aucune intégration configurée.</p>
+              <p className="text-sm text-slate-400">{t('admin.overview.noIntegrations')}</p>
             ) : (
               integrations.slice(0, 4).map((int) => (
                 <div key={int.id} className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">{int.name}</p>
                     <p className="text-[11px] text-slate-400">
-                      Dernière synchro : {formatRelative(int.lastSync)}
+                      {t('admin.overview.lastSync', { relative: timeAgo(int.lastSync) || t('admin.integrations.never') })}
                     </p>
                   </div>
                   <IntegrationBadge status={int.enabled ? int.status : 'disconnected'} />
@@ -248,14 +246,14 @@ function AdminOverview() {
           </div>
 
           <div className="bg-slate-900 rounded-2xl p-6 text-white custom-shadow space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-widest">Actions rapides</h3>
+            <h3 className="text-sm font-bold uppercase tracking-widest">{t('admin.overview.quickActions')}</h3>
             {can(user, 'users.manage') && (
               <button
                 onClick={() => navigate('/admin/users/new')}
                 className="flex items-center gap-2 w-full px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-semibold transition-colors"
               >
                 <UserPlus className="w-4 h-4" />
-                Ajouter un utilisateur
+                {t('admin.overview.addUser')}
               </button>
             )}
             {can(user, 'documents.manage') && (
@@ -264,7 +262,7 @@ function AdminOverview() {
                 className="flex items-center gap-2 w-full px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-semibold transition-colors"
               >
                 <FilePlus2 className="w-4 h-4" />
-                Créer un document
+                {t('admin.overview.createDoc')}
               </button>
             )}
           </div>

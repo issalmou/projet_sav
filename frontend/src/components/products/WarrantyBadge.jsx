@@ -1,4 +1,5 @@
 import { ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion } from 'lucide-react'
+import { useI18n } from '../../i18n/useI18n'
 
 function getWarrantyStatus(purchaseDate, warrantyMonths) {
   if (!purchaseDate || !warrantyMonths) return 'none'
@@ -24,28 +25,28 @@ export function getWarrantyInfo(warranty_purchase_date, warranty_months) {
   const endDate = getWarrantyEndDate(warranty_purchase_date, warranty_months)
   const configs = {
     active: {
-      label: 'Garantie Active',
+      labelKey: 'warranty.active',
       color: 'bg-teal-50 text-teal-700 border-teal-100',
       dotColor: 'bg-teal-500',
       borderColor: 'border-l-teal-500',
       icon: ShieldCheck
     },
     expiring: {
-      label: 'Expire bientôt',
+      labelKey: 'warranty.expiring',
       color: 'bg-orange-50 text-orange-700 border-orange-100',
       dotColor: 'bg-orange-500',
       borderColor: 'border-l-orange-400',
       icon: ShieldAlert
     },
     expired: {
-      label: 'Garantie Expirée',
+      labelKey: 'warranty.expired',
       color: 'bg-red-50 text-red-700 border-red-100',
       dotColor: 'bg-red-500',
       borderColor: 'border-l-red-400',
       icon: ShieldX
     },
     none: {
-      label: 'Aucune Garantie',
+      labelKey: 'warranty.none',
       color: 'bg-slate-100 text-slate-500 border-slate-200',
       dotColor: 'bg-slate-300',
       borderColor: 'border-l-slate-300',
@@ -56,7 +57,9 @@ export function getWarrantyInfo(warranty_purchase_date, warranty_months) {
 }
 
 export function WarrantyBadge({ purchaseDate, warrantyMonths, compact = false }) {
-  const { label, color, icon: Icon } = getWarrantyInfo(purchaseDate, warrantyMonths)
+  const { t } = useI18n()
+  const { labelKey, color, icon: Icon } = getWarrantyInfo(purchaseDate, warrantyMonths)
+  const label = t(labelKey)
 
   if (compact) {
     return (

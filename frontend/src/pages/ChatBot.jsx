@@ -6,28 +6,25 @@ import {
   Bot,
   User,
   MoreVertical,
-  Paperclip,
-  Smile,
-  Mic,
   Sparkles,
   MessageSquare,
   Trash2,
   Clock,
   PanelLeftClose,
   PanelLeftOpen,
-  Ticket
+  Ticket,
+  ClipboardList
 } from 'lucide-react'
 import { useAuth } from '../contexts/useAuth'
 import { useTickets } from '../contexts/useTickets'
 import { apiRequest } from '../api/client'
 import { useNavigate } from 'react-router-dom'
+import { useI18n } from '../i18n/useI18n'
 
-const quickSuggestions = [
-  'Mon appareil ne démarre pas',
-  'Comment mettre à jour le firmware ?',
-  'Problème de connexion Wi-Fi',
-  'Demander un agent humain'
-]
+const isUuid = (value) => (
+  typeof value === 'string'
+  && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+)
 
 function TypingIndicator() {
   return (
@@ -47,6 +44,7 @@ function TypingIndicator() {
 }
 
 function MessageBubble({ message, onCreateTicket, onNavigateToTicket }) {
+  const { t } = useI18n()
   const isUser = message.role === 'user'
 
   return (
@@ -81,7 +79,7 @@ function MessageBubble({ message, onCreateTicket, onNavigateToTicket }) {
             className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-all active:scale-95"
           >
             <Ticket className="w-4 h-4" />
-            Créer un ticket
+            {t('chat.createTicket')}
           </button>
         )}
         {!isUser && message.ticketCreated && (
@@ -90,7 +88,7 @@ function MessageBubble({ message, onCreateTicket, onNavigateToTicket }) {
             className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl transition-all active:scale-95"
           >
             <Ticket className="w-4 h-4" />
-            Voir le ticket {message.ticketId}
+            {t('chat.viewTicket', { id: message.ticketId })}
           </button>
         )}
       </div>
@@ -102,6 +100,7 @@ function ChatBot() {
   const { user } = useAuth()
   const { createTicket } = useTickets()
   const navigate = useNavigate()
+  const { t, language } = useI18n()
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
   const [messages, setMessages] = useState([])
@@ -109,8 +108,21 @@ function ChatBot() {
   const [isTyping, setIsTyping] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [pendingTicket, setPendingTicket] = useState(null)
+  const [productContext, setProductContext] = useState({
+    description: '',
+    installationDate: '',
+    productId: '',
+  })
+  const [products, setProducts] = useState([])
+  const [productsLoading, setProductsLoading] = useState(false)
+  const [productsError, setProductsError] = useState('')
+  const [productContextError, setProductContextError] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const conversationCreationRef = useRef(null)
+  const conversationLoadRef = useRef(0)
+  const conversationLoadingRef = useRef(false)
+  const sendingRef = useRef(false)
   const token = user?.access_token || user?.token
 
   const scrollToBottom = () => {
@@ -124,31 +136,125 @@ function ChatBot() {
   useEffect(() => {
     if (!token) return
     apiRequest('/chat/conversations', { token }).then((data) => setConversations(data || [])).catch(() => setConversations([]))
-  }, [token])
+  }, [token, user?.id, user?.role])
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return
+useEffect(() => {
+    if (!token) return
 
-    const content = inputValue.trim()
+    setProductsLoading(true)
+    setProductsError('')
+    const productsPath = user?.role === 'client' && user?.id
+      ? `/clients/${user.id}/products`
+      : '/products/'
+    apiRequest(productsPath, { token })
+      .then((data) => setProducts(Array.isArray(data) ? data : data.items || []))
+      .catch((error) => {
+        setProducts([])
+        setProductsError(error.message || t('chat.loadError'))
+      })
+      .finally(() => setProductsLoading(false))
+  }, [token, user?.id, user?.role, t])
+
+  const ensureConversation = (title, productId) => {
+    if (isUuid(activeConversation)) return Promise.resolve(activeConversation)
+    if (conversationCreationRef.current) return conversationCreationRef.current
+
+    conversationCreationRef.current = apiRequest('/chat/conversations', {
+      token,
+      method: 'POST',
+      body: JSON.stringify({ title, product_id: productId }),
+    })
+      .then((conversation) => {
+        const conversationId = conversation?.id || conversation?.conversation_id
+if (!isUuid(conversationId)) {
+          throw new Error(t('chat.contextInvalidUuid'))
+        }
+
+        setActiveConversation(conversationId)
+        setConversations((previous) => [
+          { ...conversation, id: conversationId, title: conversation.title || title },
+          ...previous.filter((item) => item.id !== conversationId),
+        ])
+        return conversationId
+      })
+      .finally(() => {
+        conversationCreationRef.current = null
+      })
+
+    return conversationCreationRef.current
+  }
+
+const handleSendMessage = async () => {
+    if (!inputValue.trim() || sendingRef.current || conversationLoadingRef.current) return
+    sendingRef.current = true
+
+    const isFirstMessage = messages.length === 0
+    if (isFirstMessage) {
+      if (!productContext.description.trim() || !productContext.installationDate || !productContext.productId) {
+        setProductContextError(t('chat.contextRequired'))
+        sendingRef.current = false
+        return
+      }
+    }
+
+    const selectedProduct = products.find((product) => String(product.id) === String(productContext.productId))
+    if (isFirstMessage && !isUuid(productContext.productId)) {
+      setProductContextError(t('chat.contextInvalidUuid'))
+      sendingRef.current = false
+      return
+    }
+    const content = isFirstMessage
+      ? `${inputValue.trim()}\n\nInformations produit :\n- Description : ${productContext.description.trim()}\n- Date d'installation : ${productContext.installationDate}\n- Produit : ${selectedProduct?.name || 'Produit sélectionné'}`
+      : inputValue.trim()
+
+    if (content.length > 8000) {
+      setProductContextError(t('chat.tooLong'))
+      sendingRef.current = false
+      return
+    }
     const newMessage = {
       id: `local-${Date.now()}`,
       role: 'user',
       content,
-      timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
     }
 
     setMessages(prev => [...prev, newMessage])
     setInputValue('')
     setIsTyping(true)
     try {
-      const result = await apiRequest('/chat/message', { token, method: 'POST', body: JSON.stringify({ content, conversation_id: activeConversation || null }) })
+      const conversationId = await ensureConversation(
+        selectedProduct?.name || 'Nouvelle conversation',
+        productContext.productId,
+      )
+      if (!isUuid(conversationId)) {
+        throw new Error(t('chat.contextInvalidUuid'))
+      }
+
+      const payload = {
+        content,
+        conversation_id: conversationId,
+        ...(isFirstMessage ? { product_id: productContext.productId } : {}),
+      }
+      const result = await apiRequest('/chat/message', { token, method: 'POST', body: JSON.stringify(payload) })
       const message = result.message
-      setActiveConversation(result.conversation_id)
-      setMessages(prev => [...prev, { ...message, timestamp: new Date(message.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }])
+      if (isUuid(result.conversation_id)) {
+        setActiveConversation(result.conversation_id)
+      }
+      setMessages(prev => [...prev, { ...message, timestamp: new Date(message.created_at).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' }) }])
     } catch (error) {
       setMessages(prev => [...prev, { id: `error-${Date.now()}`, role: 'assistant', content: error.message }])
-    } finally { setIsTyping(false) }
+    } finally {
+      setIsTyping(false)
+      sendingRef.current = false
+    }
     inputRef.current?.focus()
+  }
+
+  const handleProductContextChange = (e) => {
+    const { name, value } = e.target
+    setProductContext((previous) => ({ ...previous, [name]: value }))
+    if (productContextError) setProductContextError('')
   }
 
   const handleKeyDown = (e) => {
@@ -163,6 +269,39 @@ function ChatBot() {
     inputRef.current?.focus()
   }
 
+  const handleConversationSelect = async (conversationId) => {
+    if (!isUuid(conversationId)) return
+
+    const requestId = conversationLoadRef.current + 1
+    conversationLoadRef.current = requestId
+    conversationLoadingRef.current = true
+    setActiveConversation(conversationId)
+    setMessages([])
+    setIsTyping(false)
+
+    try {
+      const conversation = await apiRequest(`/chat/conversations/${conversationId}`, { token })
+      if (conversationLoadRef.current !== requestId) return
+
+setMessages((conversation.messages || []).map((message) => ({
+        ...message,
+        timestamp: new Date(message.created_at || message.createdAt).toLocaleTimeString(language, {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      })))
+    } catch (error) {
+      if (conversationLoadRef.current !== requestId) return
+      setMessages([{
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: error.message || t('chat.historyError'),
+      }])
+    } finally {
+      if (conversationLoadRef.current === requestId) conversationLoadingRef.current = false
+    }
+  }
+
   const handleCreateTicket = async () => {
     if (!pendingTicket) return
     
@@ -170,14 +309,15 @@ function ChatBot() {
       title: pendingTicket.title,
       description: pendingTicket.description,
       category: pendingTicket.category,
-      priority: 'medium'
+      priority: 'medium',
+      source: 'chatbot',
     }, user)
 
     const confirmMessage = {
       id: `ticket-${Date.now()}`,
       role: 'assistant',
-      content: `✅ **Ticket ${ticket.id} créé avec succès !**\n\nVous pouvez suivre l'état de votre ticket en cliquant sur le bouton ci-dessous.`,
-      timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      content: t('chat.ticketCreated', { id: ticket.id }),
+      timestamp: new Date().toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' }),
       ticketCreated: true,
       ticketId: ticket.id
     }
@@ -187,8 +327,12 @@ function ChatBot() {
   }
 
   const handleNewConversation = () => {
+    conversationLoadRef.current += 1
+    conversationLoadingRef.current = false
     setActiveConversation(null)
     setMessages([])
+    setProductContext({ description: '', installationDate: '', productId: '' })
+    setProductContextError('')
   }
 
   const handleDeleteConversation = (id, e) => {
@@ -205,6 +349,8 @@ function ChatBot() {
     }
   }
 
+  const quickSuggestions = [t('chat.suggestion1'), t('chat.suggestion2'), t('chat.suggestion3'), t('chat.suggestion4')]
+
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-slate-50 overflow-hidden">
       {/* Conversations Sidebar */}
@@ -215,7 +361,7 @@ function ChatBot() {
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
-            Nouvelle conversation
+            {t('chat.newConversation')}
           </button>
         </div>
 
@@ -225,7 +371,7 @@ function ChatBot() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Rechercher..."
+              placeholder={t('chat.search')}
               className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
@@ -236,7 +382,7 @@ function ChatBot() {
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              onClick={() => setActiveConversation(conv.id)}
+              onClick={() => handleConversationSelect(conv.id)}
               className={`group flex items-start gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all ${
                 conv.id === activeConversation
                   ? 'bg-blue-50 border border-blue-100'
@@ -287,10 +433,10 @@ function ChatBot() {
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">3LM solutions Ai Assistant</h2>
+              <h2 className="text-sm font-bold text-slate-900">{t('chat.title')}</h2>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-teal-500 rounded-full" />
-                <span className="text-[11px] text-teal-600 font-medium">En ligne</span>
+                <span className="text-[11px] text-teal-600 font-medium">{t('chat.online')}</span>
               </div>
             </div>
           </div>
@@ -309,11 +455,70 @@ function ChatBot() {
               <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
                 <Sparkles className="w-10 h-10 text-blue-600" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Bonjour, {user?.name?.split(' ')[0] || 'Utilisateur'} !</h2>
-              <p className="text-slate-500 max-w-md mb-8">
-                Je suis votre assistant 3LM Soltuion AI. Posez-moi des questions sur vos produits, services ou technique. Je suis là pour vous aider.
-              </p>
-              <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
+<h2 className="text-2xl font-bold text-slate-900 mb-2">{t('chat.welcome', { name: user?.name?.split(' ')[0] || 'Utilisateur' })}</h2>
+               <p className="text-slate-500 max-w-md mb-8">
+                 {t('chat.intro')}
+               </p>
+               <div className="w-full max-w-2xl mb-6 rounded-2xl border border-blue-100 bg-white p-5 text-left shadow-sm">
+                 <div className="flex items-start gap-3 mb-4">
+                   <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                     <ClipboardList className="w-5 h-5 text-blue-600" />
+                   </div>
+                   <div>
+                     <h3 className="text-sm font-bold text-slate-900">{t('chat.productTitle')}</h3>
+                     <p className="text-xs text-slate-500 mt-0.5">{t('chat.productSubtitle')}</p>
+                   </div>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <label className="block md:col-span-2">
+                     <span className="block text-xs font-semibold text-slate-700 mb-1.5">{t('chat.productDesc')}</span>
+                     <textarea
+                       name="description"
+                       value={productContext.description}
+                       onChange={handleProductContextChange}
+                       placeholder={t('chat.productDescPlaceholder')}
+                       rows={3}
+                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-none"
+                     />
+                   </label>
+                   <label className="block">
+                     <span className="block text-xs font-semibold text-slate-700 mb-1.5">{t('chat.installDate')}</span>
+                     <input
+                       type="date"
+                       name="installationDate"
+                       value={productContext.installationDate}
+                       onChange={handleProductContextChange}
+                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                     />
+                   </label>
+                    <label className="block">
+                      <span className="block text-xs font-semibold text-slate-700 mb-1.5">{t('chat.productBought')}</span>
+                      {productsLoading ? (
+                        <p className="text-sm text-slate-500 py-2.5">{t('chat.loadingProducts')}</p>
+                      ) : products.length > 0 ? (
+                        <select
+                          name="productId"
+                          value={productContext.productId}
+                          onChange={handleProductContextChange}
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        >
+                          <option value="">{t('chat.selectProduct')}</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name}{product.reference ? ` (${product.reference})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      {productsError && <p className="mt-1.5 text-xs text-red-600">{productsError}</p>}
+                      {!productsLoading && !productsError && products.length === 0 && (
+                        <p className="mt-1.5 text-xs text-slate-500">{t('chat.noProducts')}</p>
+                      )}
+                    </label>
+                 </div>
+                 {productContextError && <p className="mt-3 text-xs font-medium text-red-600">{productContextError}</p>}
+               </div>
+               <div className="grid grid-cols-2 gap-3 max-w-lg w-full">
                 {quickSuggestions.map((suggestion, i) => (
                   <button
                     key={i}
@@ -365,26 +570,17 @@ function ChatBot() {
         <div className="bg-white border-t border-slate-200 p-4 shrink-0">
           <div className="max-w-3xl mx-auto">
             <div className="flex items-end gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-              <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors shrink-0">
-                <Paperclip className="w-5 h-5" />
-              </button>
               <textarea
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Envoyez un message à 3LM Soltuion AI..."
+                placeholder={t('chat.sendPlaceholder')}
                 rows={1}
                 className="flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none max-h-32 min-h-[24px]"
                 style={{ lineHeight: '1.5' }}
               />
               <div className="flex items-center gap-1 shrink-0">
-                <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-                  <Smile className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-                  <Mic className="w-5 h-5" />
-                </button>
                 <button
                   onClick={handleSendMessage}
                   disabled={!inputValue.trim()}
@@ -399,7 +595,7 @@ function ChatBot() {
               </div>
             </div>
             <p className="text-center text-[10px] text-slate-400 mt-2">
-              3LM Soltuion AI peut faire des erreurs. Vérifiez les informations importantes.
+              {t('chat.disclaimer')}
             </p>
           </div>
         </div>

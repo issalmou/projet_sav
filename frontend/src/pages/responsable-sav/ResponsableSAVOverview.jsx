@@ -103,7 +103,6 @@ function ResponsableSAVOverview() {
   const pendingTickets = openTickets + inProgressTickets
   const resolutionRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : 0
 
-  const activeUsers = users.filter((u) => u.status === 'active').length
   const agents = users.filter((u) => u.role === 'agent')
   const activeAgents = agents.filter((u) => u.status === 'active').length
 

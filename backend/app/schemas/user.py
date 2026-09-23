@@ -96,6 +96,7 @@ class UserPublic(BaseModel):
     id: UUID
     email: EmailStr
     full_name: str | None = None
+    phone_number: str | None = None
     preferred_language: str = "fr"
     role: RoleRead | None = None
 

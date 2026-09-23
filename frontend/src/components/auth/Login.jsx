@@ -4,14 +4,15 @@ import { Cpu, MessageSquare, Sparkles, Loader2 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
 import { homeFor, resolveRole } from '../../contexts/roles'
 import { getCurrentUserRequest, loginRequest } from '../../api/auth'
+import { useI18n } from '../../i18n/useI18n'
 
 function Login() {
   const { login } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    rememberMe: false
   })
 
   const [errors, setErrors] = useState({})
@@ -33,8 +34,7 @@ function Login() {
         password: formData.password,
       })
 
-      // Le backend renvoie uniquement les tokens : on charge le profil courant
-      // pour disposer du nom, de l'email et du rôle de l'utilisateur.
+      // En mode backend, le profil est chargé séparément après le token.
       if (data.access_token) {
         const profile = await getCurrentUserRequest(data.access_token).catch(() => null)
         if (profile) {
@@ -42,7 +42,7 @@ function Login() {
         }
       }
     } catch (err) {
-      setErrors({ form: err.message || 'Authentification échouée.' })
+      setErrors({ form: err.message || t('auth.failed') })
       setLoading(false)
       return
     }
@@ -72,14 +72,18 @@ function Login() {
     }
   }
 
-  function validateForm() {
+function validateForm() {
     const errs = {}
     if (!formData.email.trim()) {
-      errs.email = 'Email is required.'
+      errs.email = t('auth.emailRequired')
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errs.email = 'Email is invalid.'
+      errs.email = t('auth.emailInvalid')
     }
-    if (!formData.password) errs.password = 'Password is required.'
+    if (!formData.password) {
+      errs.password = t('auth.passwordRequired')
+    } else if (formData.password.length < 8) {
+      errs.password = t('auth.passwordMin')
+    }
     return errs
   }
 
@@ -121,24 +125,24 @@ function Login() {
           </div>
 
           <div className="text-center px-4">
-            <h2 className="text-3xl font-bold text-white mb-4">The next generation of customer support</h2>
+            <h2 className="text-3xl font-bold text-white mb-4">{t('auth.heroTitle')}</h2>
             <p className="text-blue-100 text-lg">
-              Harness the power of AI to resolve tickets 10x faster and delight your customers at every touchpoint.
+              {t('auth.heroText')}
             </p>
           </div>
 
           <div className="mt-12 flex justify-center gap-8">
             <div className="text-center">
               <div className="text-2xl font-bold text-white">99.9%</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">Uptime</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.uptime')}</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-white">500k+</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">Tickets resolved</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.ticketsResolved')}</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-white">4.9/5</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">CSAT Score</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.csat')}</div>
             </div>
           </div>
         </div>
@@ -153,10 +157,10 @@ function Login() {
             <span className="text-xl font-bold text-slate-900 tracking-tight">3LM Solutions</span>
           </div>
 
-          <div className="mb-10">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome back</h1>
-            <p className="text-slate-500">Please enter your details to access your dashboard.</p>
-          </div>
+           <div className="mb-10">
+             <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('auth.welcomeBack')}</h1>
+             <p className="text-slate-500">{t('auth.enterDetails')}</p>
+           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {errors.form && (
@@ -167,7 +171,7 @@ function Login() {
 
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Email Address
+                {t('auth.email')}
               </label>
               <input
                 type="email"
@@ -184,10 +188,10 @@ function Login() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-                  Password
+                  {t('auth.password')}
                 </label>
                 <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                  Forgot password?
+                  {t('auth.forgot')}
                 </Link>
               </div>
               <input
@@ -202,20 +206,6 @@ function Login() {
               {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="remember-me"
-                name="rememberMe"
-                checked={formData.rememberMe}
-                onChange={handleChange}
-                className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-600 transition-all"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-600 cursor-pointer">
-                Remember me for 30 days
-              </label>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -224,42 +214,14 @@ function Login() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Connexion en cours...
+                  {t('auth.signing')}
                 </>
               ) : (
-                'Sign in to Dashboard'
+                t('auth.signin')
               )}
             </button>
 
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-slate-400">Or continue with</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 font-medium py-2.5 rounded-lg hover:bg-slate-50 transition-all"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              Login with google
-            </button>
-          </form>
-
-          <p className="mt-10 text-center text-sm text-slate-500">
-            Don't have an account?{' '}
-            <Link to="/signup" className="font-medium text-blue-600 hover:text-blue-700 transition-colors ml-1">
-              Sign up for a free trial
-            </Link>
-          </p>
+           </form>
         </div>
       </div>
     </div>

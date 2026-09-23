@@ -17,13 +17,12 @@ import {
   ArrowDown,
   Download,
   RefreshCw,
-  MessageSquare
 } from 'lucide-react'
 import { useTickets } from '../../contexts/useTickets'
 import { useAuth } from '../../contexts/useAuth'
+import { useAdmin } from '../../contexts/useAdmin'
 import StatusBadge from '../../components/tickets/StatusBadge'
 import PriorityBadge from '../../components/tickets/PriorityBadge'
-import CategoryBadge from '../../components/tickets/CategoryBadge'
 import {
   STATUSES,
   STATUS_ORDER,
@@ -31,17 +30,9 @@ import {
   CATEGORIES,
   SORT_OPTIONS
 } from '../../components/tickets/constants'
+import { useI18n } from '../../i18n/useI18n'
 
 const PAGE_SIZE = 8
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-}
 
 function StatCard({ icon: Icon, label, value, color }) {
   return (
@@ -57,10 +48,9 @@ function StatCard({ icon: Icon, label, value, color }) {
   )
 }
 
-function TicketRow({ ticket, basePath }) {
+function TicketRow({ ticket, basePath, assigneeName, isClient }) {
   const navigate = useNavigate()
-  const messageCount = ticket.messages?.length ?? 0
-
+  const { t, formatDate } = useI18n()
   return (
     <div
       onClick={() => navigate(`${basePath}/${ticket.id}`)}
@@ -68,40 +58,40 @@ function TicketRow({ ticket, basePath }) {
     >
       <span className="text-xs font-bold text-slate-400 w-20 shrink-0">#{ticket.id}</span>
 
-      <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0">
         <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
           {ticket.title}
         </h4>
         <p className="text-xs text-slate-500 truncate mt-0.5">{ticket.description}</p>
       </div>
 
-      <span className="hidden lg:inline shrink-0">
-        <CategoryBadge category={ticket.category} />
-      </span>
-
       <div className="shrink-0">
         <StatusBadge status={ticket.status} />
       </div>
 
-      <div className="shrink-0">
-        <PriorityBadge priority={ticket.priority} />
-      </div>
+      {!isClient && (
+        <>
+          <div className="shrink-0">
+            <PriorityBadge priority={ticket.priority} />
+          </div>
 
-      <div className="hidden xl:flex items-center gap-2 shrink-0 w-32">
-        <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center">
-          <User className="w-3 h-3 text-slate-500" />
-        </div>
-        <span className="text-xs text-slate-600 truncate">{ticket.assignee}</span>
-      </div>
+          <div className="hidden xl:flex items-center gap-2 shrink-0 w-32">
+            <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center">
+              <User className="w-3 h-3 text-slate-500" />
+            </div>
+            {ticket.client && (
+              <span className="hidden xl:inline text-xs text-slate-500 truncate max-w-32">
+                {ticket.client.full_name || ticket.client.name || ticket.client.email}
+              </span>
+            )}
+            <span className="text-xs text-slate-600 truncate">{assigneeName || ticket.assignee || t('common.unassigned')}</span>
+          </div>
+        </>
+      )}
 
       <div className="hidden sm:flex items-center gap-1.5 shrink-0">
         <Calendar className="w-3 h-3 text-slate-400" />
         <span className="text-xs text-slate-500">{formatDate(ticket.createdAt)}</span>
-      </div>
-
-      <div className="hidden md:flex items-center gap-1 shrink-0">
-        <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-        <span className="text-xs text-slate-500">{messageCount}</span>
       </div>
 
       <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0" />
@@ -132,9 +122,15 @@ function SortButton({ label, active, direction, onClick }) {
 function TicketsList({ basePath = '/tickets' }) {
   const { getUserTickets } = useTickets()
   const { user } = useAuth()
+  const { users } = useAdmin()
+  const { t, formatDate } = useI18n()
   const navigate = useNavigate()
 
   const userTickets = getUserTickets(user)
+  const getAssigneeName = (ticket) => {
+    const id = ticket.assigned_technician_id || ticket.assigneeId || ticket.assignee_id
+    return users.find((item) => String(item.id) === String(id))?.name || null
+  }
   const isClient = user?.role === 'client'
 
   const [search, setSearch] = useState('')
@@ -208,8 +204,8 @@ function TicketsList({ basePath = '/tickets' }) {
 
   const statusCounts = useMemo(() => {
     const counts = { all: userTickets.length }
-    STATUS_ORDER.forEach((s) => {
-      counts[s] = userTickets.filter((t) => t.status === s).length
+STATUS_ORDER.forEach((status) => {
+      counts[status] = userTickets.filter((ticket) => ticket.status === status).length
     })
     return counts
   }, [userTickets])
@@ -224,17 +220,16 @@ function TicketsList({ basePath = '/tickets' }) {
     setShowFilters(false)
   }
 
-  const exportCSV = () => {
-    const headers = ['ID', 'Titre', 'Statut', 'Priorité', 'Catégorie', 'Assigné à', 'Créé le', 'Messages']
-    const rows = filteredTickets.map((t) => [
-      t.id,
-      `"${t.title.replace(/"/g, '""')}"`,
-      STATUSES[t.status].label,
-      PRIORITIES[t.priority].label,
-      t.category,
-      t.assignee,
-      formatDate(t.createdAt),
-      t.messages?.length ?? 0
+const exportCSV = () => {
+    const headers = ['ID', 'Titre', 'Statut', 'Priorité', 'Catégorie', 'Assigné à', 'Créé le']
+    const rows = filteredTickets.map((ticket) => [
+      ticket.id,
+      `"${ticket.title.replace(/"/g, '""')}"`,
+      t(`status.${ticket.status}`),
+      t(`priority.${ticket.priority}`),
+      ticket.category,
+      ticket.assignee,
+      formatDate(ticket.createdAt)
     ])
     const csv = [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -252,13 +247,13 @@ function TicketsList({ basePath = '/tickets' }) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              {isClient ? 'Mes Tickets' : 'Gestion des Tickets'}
+<h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+               {isClient ? t('tickets.clientTitle') : t('tickets.title')}
             </h1>
             <p className="text-slate-500">
-              {isClient 
-                ? 'Suivez vos demandes de support.' 
-                : 'Suivez et gérez toutes les demandes de support.'}
+                {isClient
+                 ? t('tickets.clientSubtitle')
+                : t('tickets.subtitle')}
             </p>
           </div>
           {!isClient && (
@@ -267,30 +262,30 @@ function TicketsList({ basePath = '/tickets' }) {
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
           >
             <Plus className="w-5 h-5" />
-            Nouveau Ticket
+            {t('tickets.newTicket')}
           </button>
           )}
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard icon={Ticket} label="Total Tickets" value={userTickets.length} color="bg-blue-50 text-blue-600" />
+          <StatCard icon={Ticket} label={t('tickets.total')} value={userTickets.length} color="bg-blue-50 text-blue-600" />
           <StatCard
             icon={AlertTriangle}
-            label="En cours"
-            value={userTickets.filter((t) => t.status === 'in_progress').length}
+            label={t('tickets.inProgress')}
+            value={userTickets.filter((ticket) => ticket.status === 'in_progress').length}
             color="bg-amber-50 text-amber-600"
           />
           <StatCard
             icon={CheckCircle2}
-            label="Résolus"
-            value={userTickets.filter((t) => t.status === 'resolved').length}
+            label={t('tickets.resolved')}
+            value={userTickets.filter((ticket) => ticket.status === 'resolved').length}
             color="bg-teal-50 text-teal-600"
           />
           <StatCard
             icon={Clock}
-            label="Ouverts"
-            value={userTickets.filter((t) => t.status === 'open').length}
+            label={t('tickets.open')}
+            value={userTickets.filter((ticket) => ticket.status === 'open').length}
             color="bg-red-50 text-red-600"
           />
         </div>
@@ -305,39 +300,33 @@ function TicketsList({ basePath = '/tickets' }) {
                 type="text"
                 value={search}
                 onChange={(e) => updateSearch(e.target.value)}
-                placeholder="Rechercher par ID, titre ou description..."
+                placeholder={t('tickets.search')}
                 className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               />
             </div>
 
-            {/* Sort */}
-            <div className="relative">
-              <select
-                value={sortBy}
-                onChange={(e) => updateSort(e.target.value)}
-                className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            </div>
-
-            <button
-              onClick={() => setSortAsc(!sortAsc)}
-              disabled={sortBy === 'title'}
-              title="Inverser l'ordre"
-              className={`p-2.5 rounded-xl border transition-colors ${
-                sortAsc
-                  ? 'bg-blue-50 text-blue-600 border-blue-200'
-                  : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-              } ${sortBy === 'title' ? 'opacity-40 cursor-not-allowed' : ''}`}
-            >
-              <ArrowUpDown className="w-4 h-4" />
-            </button>
+             {!isClient && <>
+               <div className="relative">
+                 <select
+                   value={sortBy}
+                   onChange={(e) => updateSort(e.target.value)}
+                   className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                 >
+{SORT_OPTIONS.map((opt) => (
+                     <option key={opt.value} value={opt.value}>{t('sort.' + opt.value)}</option>
+                   ))}
+                 </select>
+                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+               </div>
+               <button
+                 onClick={() => setSortAsc(!sortAsc)}
+                 disabled={sortBy === 'title'}
+                 title={t('tickets.toggleOrder')}
+                 className={`p-2.5 rounded-xl border transition-colors ${sortAsc ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'} ${sortBy === 'title' ? 'opacity-40 cursor-not-allowed' : ''}`}
+               >
+                 <ArrowUpDown className="w-4 h-4" />
+               </button>
+             </>}
 
             {/* Filter Toggle */}
             <button
@@ -349,7 +338,7 @@ function TicketsList({ basePath = '/tickets' }) {
               }`}
             >
               <Filter className="w-4 h-4" />
-              Filtres
+              {t('tickets.filters')}
               {(statusFilter !== 'all' || priorityFilter !== 'all' || categoryFilter !== 'all') && (
                 <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center">
                   {(statusFilter !== 'all' ? 1 : 0) + (priorityFilter !== 'all' ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0)}
@@ -358,22 +347,22 @@ function TicketsList({ basePath = '/tickets' }) {
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Actions */}
+             {/* Actions */}
             <button
               onClick={resetFilters}
-              title="Réinitialiser"
+              title={t('tickets.reset')}
               className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-            <button
-              onClick={exportCSV}
-              title="Exporter en CSV"
-              disabled={filteredTickets.length === 0}
-              className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+             {!isClient && <button
+                 onClick={exportCSV}
+title={t('tickets.exportCsv')}
+                 disabled={filteredTickets.length === 0}
+                 className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+               >
+                 <Download className="w-4 h-4" />
+               </button>}
           </div>
 
           {/* Expanded Filters */}
@@ -381,7 +370,7 @@ function TicketsList({ basePath = '/tickets' }) {
             <div className="p-4 flex flex-wrap items-center gap-x-8 gap-y-4 bg-slate-50 border-b border-slate-100">
               {/* Status pills */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-slate-500">Statut :</span>
+                <span className="text-xs font-semibold text-slate-500">{t('tickets.statusLabel')}</span>
                 <button
                   onClick={() => updateStatusFilter('all')}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
@@ -390,7 +379,7 @@ function TicketsList({ basePath = '/tickets' }) {
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  Tous ({statusCounts.all})
+                  {t('common.all')} ({statusCounts.all})
                 </button>
                 {STATUS_ORDER.map((status) => {
                   const s = STATUSES[status]
@@ -404,79 +393,76 @@ function TicketsList({ basePath = '/tickets' }) {
                       }`}
                     >
                       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                      {s.label} ({statusCounts[status]})
+                      {t(`status.${status}`)} ({statusCounts[status]})
                     </button>
                   )
                 })}
               </div>
 
-              {/* Priority */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">Priorité :</span>
+               {/* Priority */}
+               {!isClient && <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">{t('tickets.priorityLabel')}</span>
                 <select
                   value={priorityFilter}
                   onChange={(e) => updatePriorityFilter(e.target.value)}
                   className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="all">Toutes</option>
-                  <option value="high">Haute</option>
-                  <option value="medium">Moyenne</option>
-                  <option value="low">Basse</option>
+                  <option value="all">{t('tickets.priorityAll')}</option>
+                  <option value="high">{t('tickets.priorityHigh')}</option>
+                  <option value="medium">{t('tickets.priorityMedium')}</option>
+                  <option value="low">{t('tickets.priorityLow')}</option>
                 </select>
-              </div>
+               </div>}
 
-              {/* Category */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">Catégorie :</span>
+               {/* Category */}
+               {!isClient && <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">{t('tickets.categoryLabel')}</span>
                 <select
                   value={categoryFilter}
                   onChange={(e) => updateCategoryFilter(e.target.value)}
                   className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="all">Toutes</option>
+                  <option value="all">{t('tickets.priorityAll')}</option>
                   {CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
+                    <option key={c.value} value={c.value}>{t(`category.${c.value}`)}</option>
                   ))}
                 </select>
-              </div>
+               </div>}
 
               <button
                 onClick={resetFilters}
                 className="text-xs font-semibold text-blue-600 hover:text-blue-700"
               >
-                Réinitialiser
+                {t('common.reset')}
               </button>
             </div>
           )}
 
           {/* Table Header */}
           <div className="px-5 py-3 flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 group">
-            <span className="w-20 shrink-0">ID</span>
-            <span className="flex-1">Titre</span>
-            <span className="hidden lg:inline shrink-0">Catégorie</span>
-            <span className="shrink-0 w-28 text-center">
-              <SortButton label="Statut" active={sortBy === 'status'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
+<span className="w-20 shrink-0">ID</span>
+            <span className="flex-1">{t('tickets.titleColumn')}</span>
+             {!isClient && <span className="hidden lg:inline shrink-0">{t('common.category')}</span>}
+             <span className="shrink-0 w-28 text-center">
+              <SortButton label={t('common.statu')} active={sortBy === 'status'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
                 if (sortBy === 'status') { setSortAsc(!sortAsc); setPage(1) }
                 else updateSort('status')
               }} />
             </span>
-            <span className="shrink-0 w-24 text-center">
-              <SortButton label="Priorité" active={sortBy === 'priority'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
+             {!isClient && <span className="shrink-0 w-24 text-center">
+              <SortButton label={t('common.priority')} active={sortBy === 'priority'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
                 if (sortBy === 'priority') { setSortAsc(!sortAsc); setPage(1) }
                 else updateSort('priority')
               }} />
-            </span>
-            <span className="hidden xl:inline shrink-0 w-32">Assigné</span>
+             </span>}
+             {!isClient && <span className="hidden xl:inline shrink-0 w-32">{t('tickets.assignee')}</span>}
             <span className="hidden sm:inline shrink-0 w-24">
-              <SortButton label="Date" active={sortBy === 'newest' || sortBy === 'oldest'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
+              <SortButton label={t('tickets.date')} active={sortBy === 'newest' || sortBy === 'oldest'} direction={sortAsc ? 'asc' : 'desc'} onClick={() => {
                 if (sortBy === 'newest' || sortBy === 'oldest') { setSortAsc(!sortAsc); setPage(1) }
                 else updateSort('newest')
               }} />
             </span>
-            <span className="hidden md:inline shrink-0 w-12 text-center">
-              <MessageSquare className="w-3 h-3 inline" />
-            </span>
-            <span className="w-4 shrink-0" />
+             <span className="w-4 shrink-0" />
           </div>
 
           {/* Ticket List */}
@@ -485,25 +471,25 @@ function TicketsList({ basePath = '/tickets' }) {
               <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
                 <Ticket className="w-8 h-8 text-slate-300" />
               </div>
-              <h3 className="text-sm font-bold text-slate-900 mb-1">Aucun ticket trouvé</h3>
+              <h3 className="text-sm font-bold text-slate-900 mb-1">{t('tickets.none')}</h3>
               <p className="text-xs text-slate-500 max-w-xs">
                 {userTickets.length === 0
                   ? isClient 
-                    ? "Vous n'avez pas encore de tickets. Utilisez le chat AI pour créer un ticket si vous rencontrez un problème."
-                    : "Aucun ticket n'existe encore."
-                  : "Aucun ticket ne correspond à vos critères de recherche ou de filtres."}
+                    ? t('tickets.emptyClient')
+                    : t('tickets.emptyStaff')
+                  : t('tickets.emptySearch')}
               </p>
               {userTickets.length === 0 && !isClient && (
                 <button
                   onClick={() => navigate(`${basePath}/new`)}
                   className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
                 >
-                  Créer un ticket
+                  {t('tickets.create')}
                 </button>
               )}
             </div>
           ) : (
-            visibleTickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} basePath={basePath} />)
+           visibleTickets.map((ticket) => <TicketRow key={ticket.id} ticket={ticket} basePath={basePath} assigneeName={getAssigneeName(ticket)} isClient={isClient} />)
           )}
         </div>
 
@@ -511,15 +497,7 @@ function TicketsList({ basePath = '/tickets' }) {
         {filteredTickets.length > 0 && (
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-500">
-              Affichage de{' '}
-              <span className="font-semibold text-slate-700">
-                {(currentPage - 1) * PAGE_SIZE + 1}
-              </span>{' '}
-              à{' '}
-              <span className="font-semibold text-slate-700">
-                {Math.min(currentPage * PAGE_SIZE, filteredTickets.length)}
-              </span>{' '}
-              sur {filteredTickets.length} ticket(s)
+              {t('tickets.showing', { from: (currentPage - 1) * PAGE_SIZE + 1, to: Math.min(currentPage * PAGE_SIZE, filteredTickets.length), total: filteredTickets.length })}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -527,7 +505,7 @@ function TicketsList({ basePath = '/tickets' }) {
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Précédent
+                {t('tickets.previous')}
               </button>
               {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
                 <button
@@ -547,7 +525,7 @@ function TicketsList({ basePath = '/tickets' }) {
                 disabled={currentPage === pageCount}
                 className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Suivant
+                {t('tickets.next')}
               </button>
             </div>
           </div>

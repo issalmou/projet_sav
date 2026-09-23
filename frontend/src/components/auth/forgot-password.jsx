@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cpu, Lock, MessageSquare, Sparkles } from 'lucide-react'
+import { useI18n } from '../../i18n/useI18n'
 
 function ForgotPassword() {
+  const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [errors, setErrors] = useState({})
   const [submitted, setSubmitted] = useState(false)
@@ -11,9 +13,9 @@ function ForgotPassword() {
     e.preventDefault()
     const validationErrors = {}
     if (!email.trim()) {
-      validationErrors.email = 'Email is required.'
+      validationErrors.email = t('auth.emailRequired')
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      validationErrors.email = 'Email is invalid.'
+      validationErrors.email = t('auth.emailInvalid')
     }
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length > 0) return
@@ -59,24 +61,24 @@ function ForgotPassword() {
           </div>
 
           <div className="text-center px-4">
-            <h2 className="text-3xl font-bold text-white mb-4">The next generation of customer support</h2>
+            <h2 className="text-3xl font-bold text-white mb-4">{t('auth.heroTitle')}</h2>
             <p className="text-blue-100 text-lg">
-              Harness the power of AI to resolve tickets 10x faster and delight your customers at every touchpoint.
+              {t('auth.heroText')}
             </p>
           </div>
 
           <div className="mt-12 flex justify-center gap-8">
             <div className="text-center">
               <div className="text-2xl font-bold text-white">99.9%</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">Uptime</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.uptime')}</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-white">500k+</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">Tickets resolved</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.ticketsResolved')}</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-white">4.9/5</div>
-              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">CSAT Score</div>
+              <div className="text-xs uppercase tracking-widest text-blue-200/60 font-semibold">{t('auth.csat')}</div>
             </div>
           </div>
         </div>
@@ -95,8 +97,8 @@ function ForgotPassword() {
             <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-6">
               <Lock className="text-slate-600 w-6 h-6" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Reset password</h1>
-            <p className="text-slate-500">Enter the email address associated with your account and we'll send you a link to reset your password.</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('auth.resetTitle')}</h1>
+            <p className="text-slate-500">{t('auth.resetSubtitle')}</p>
           </div>
 
           {submitted ? (
@@ -106,22 +108,22 @@ function ForgotPassword() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Check your email</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">{t('auth.checkEmail')}</h3>
               <p className="text-slate-500 text-sm">
-                We've sent a password reset link to <strong>{email}</strong>. Please check your inbox and follow the instructions.
+                {t('auth.resetSent', { email })}
               </p>
               <button 
                 onClick={() => setSubmitted(false)}
                 className="mt-6 text-sm font-medium text-blue-600 hover:text-blue-700"
               >
-                Didn't receive the email? Try again
+                {t('auth.tryAgain')}
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Email Address
+                  {t('auth.email')}
                 </label>
                 <input
                   type="email"
@@ -141,15 +143,15 @@ function ForgotPassword() {
                 type="submit"
                 className="w-full bg-blue-600 text-white font-medium py-2.5 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-600/20 transition-all shadow-sm"
               >
-                Send reset link
+                {t('auth.sendReset')}
               </button>
             </form>
           )}
 
           <p className="mt-10 text-center text-sm text-slate-500">
-            Remember your password?{' '}
+            {t('auth.rememberPassword')}{' '}
             <Link to="/login" className="font-medium text-blue-600 hover:text-blue-700 transition-colors ml-1">
-              Back to sign in
+              {t('auth.backToSignin')}
             </Link>
           </p>
         </div>

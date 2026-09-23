@@ -1,5 +1,6 @@
 import { Circle, Clock, CheckCircle2, XCircle } from 'lucide-react'
 import { STATUSES } from './constants'
+import { useI18n } from '../../i18n/useI18n'
 
 const STATUS_ICONS = {
   open: Circle,
@@ -9,6 +10,7 @@ const STATUS_ICONS = {
 }
 
 export default function StatusBadge({ status, size = 'sm' }) {
+  const { t } = useI18n()
   const s = STATUSES[status]
   const Icon = STATUS_ICONS[status]
 
@@ -21,7 +23,7 @@ export default function StatusBadge({ status, size = 'sm' }) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold border ${s.color} ${sizes[size]}`}>
       <Icon className={`${size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'}`} />
-      {s.label}
+      {t(`status.${status}`)}
     </span>
   )
 }

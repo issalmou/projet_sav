@@ -1,7 +1,9 @@
 import { PRIORITIES } from './constants'
+import { useI18n } from '../../i18n/useI18n'
 
 export default function PriorityBadge({ priority, size = 'sm' }) {
-  const p = PRIORITIES[priority]
+  const { t } = useI18n()
+  const p = PRIORITIES[priority] || PRIORITIES.medium
 
   const sizes = {
     sm: 'px-2.5 py-1 text-[11px]',
@@ -10,9 +12,9 @@ export default function PriorityBadge({ priority, size = 'sm' }) {
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold border ${p.color} ${sizes[size]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold border ${p.color} ${sizes[size] || sizes.sm}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${p.dot}`} />
-      {p.label}
+      {t(`priority.${priority}`)}
     </span>
   )
 }

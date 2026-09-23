@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Monitor, Server, Wifi, Printer, HardDrive, Headphones, Package } from 'lucide-react'
 import WarrantyBadge, { WarrantyDot, getWarrantyInfo } from './WarrantyBadge'
+import { useI18n } from '../../i18n/useI18n'
 
 const ICON_MAP = {
   monitor: Monitor,
@@ -10,11 +11,6 @@ const ICON_MAP = {
   'hard-drive': HardDrive,
   headphones: Headphones,
   package: Package
-}
-
-function getCategoryIcon(iconName) {
-  const Icon = ICON_MAP[iconName] || Package
-  return Icon
 }
 
 const CATEGORY_COLORS = {
@@ -27,14 +23,10 @@ const CATEGORY_COLORS = {
   Autre: 'bg-slate-100 text-slate-500'
 }
 
-function formatPrice(price) {
-  if (!price && price !== 0) return '—'
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price)
-}
-
 export default function ProductCard({ product, categoryIcon, onClick, selected = false, highlighted = false, compact = false }) {
   const navigate = useNavigate()
-  const Icon = getCategoryIcon(categoryIcon || 'package')
+  const { t } = useI18n()
+  const Icon = ICON_MAP[categoryIcon || 'package'] || Package
   const iconColor = CATEGORY_COLORS[product.category] || 'bg-slate-100 text-slate-500'
   const warranty = getWarrantyInfo(product.warranty_purchase_date, product.warranty_months)
 
@@ -71,10 +63,7 @@ export default function ProductCard({ product, categoryIcon, onClick, selected =
             <WarrantyDot purchaseDate={product.warranty_purchase_date} warrantyMonths={product.warranty_months} size="xs" />
             <p className="text-sm font-semibold text-slate-900 truncate">{product.name}</p>
           </div>
-          <p className="text-xs text-slate-500 truncate">Réf: {product.reference}</p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-sm font-bold text-slate-900">{formatPrice(product.price)}</p>
+          <p className="text-xs text-slate-500 truncate">{t('pc.ref', { ref: product.reference })}</p>
         </div>
       </button>
     )
@@ -107,7 +96,7 @@ export default function ProductCard({ product, categoryIcon, onClick, selected =
         {product.purchases && product.purchases.length > 0 && (
           <div className="absolute bottom-3 left-3">
             <span className="px-2 py-0.5 bg-black/50 text-white text-[10px] font-bold rounded-md backdrop-blur-sm">
-              {product.purchases.length} achat{product.purchases.length > 1 ? 's' : ''}
+              {t('pc.purchases', { count: product.purchases.length })}
             </span>
           </div>
         )}
@@ -119,7 +108,7 @@ export default function ProductCard({ product, categoryIcon, onClick, selected =
             {product.name}
           </h4>
         </div>
-        <p className="text-xs text-slate-500">Réf: {product.reference}</p>
+        <p className="text-xs text-slate-500">{t('pc.ref', { ref: product.reference })}</p>
         {product.brand && (
           <p className="text-xs text-slate-400">{product.brand}</p>
         )}
@@ -127,9 +116,8 @@ export default function ProductCard({ product, categoryIcon, onClick, selected =
           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border border-slate-100 ${
             CATEGORY_COLORS[product.category] || 'bg-slate-100 text-slate-500'
           }`}>
-            {product.category}
+            {t(`pcat.${product.category}`)}
           </span>
-          <span className="text-sm font-bold text-slate-900">{formatPrice(product.price)}</span>
         </div>
       </div>
     </div>

@@ -1,8 +1,21 @@
-# Theme & Design Tokens
+# Theme
 
-## CSS Variables
+## Token summary
+- Font: `Inter`, weights 300, 400, 500, 600, 700, loaded from Google Fonts.
+- Primary: `#2563EB`; primary dark: `#1E40AF`.
+- Text: primary `#0F172A`, secondary `#64748B`.
+- Surfaces: background `#F8FAFC`, surface `#FFFFFF`, border `#E2E8F0`.
+- Common Tailwind colors: slate 50/100/200/400/500/600/700/900; blue 50/100/500/600/700; teal, amber, orange, red, violet, indigo, purple, rose, emerald.
+- Shape: rounded-lg for controls, rounded-xl for buttons/nav, rounded-2xl for cards/panels, rounded-full for badges/avatars.
+- Shadows: `custom-shadow` = `0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1)`; cards use `shadow-lg`/`shadow-2xl` for elevated UI.
+- Effects: blue focus ring `rgba(37, 99, 235, 0.1)`, `brand-gradient` 135deg from primary to primary-dark, hover cards lift 2px.
+- Layout: sidebar `w-64`; top bar `h-16`; content generally `p-8`, `max-w-7xl`; responsive grids use `sm`, `md`, `lg`, `xl` breakpoints.
 
+## Raw source: `frontend/src/index.css`
 ```css
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
 :root {
   --primary: #2563EB;
   --primary-dark: #1E40AF;
@@ -12,66 +25,18 @@
   --surface: #FFFFFF;
   --border: #E2E8F0;
 }
+
+body { font-family: 'Inter', sans-serif; background-color: var(--background); color: var(--text-primary); }
+.brand-gradient { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); }
+.input-focus { transition: all 0.2s ease; }
+.input-focus:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+.custom-shadow { box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1); }
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.05); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.toast-in { animation: toast-in 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
 ```
 
-## Global Styles
-
-```css
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@import "tailwindcss";
-
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: var(--background);
-  color: var(--text-primary);
-}
-
-.brand-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-}
-
-.input-focus {
-  transition: all 0.2s ease;
-}
-
-.input-focus:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.custom-shadow {
-  box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
-}
-```
-
-## Tailwind Configuration
-
-### Vite Config
-```js
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-})
-```
-
-### Color Palette (from CSS variables and Tailwind)
-- **Primary**: Blue 600 (#2563EB)
-- **Primary Dark**: Blue 800 (#1E40AF)
-- **Background**: Slate 50 (#F8FAFC)
-- **Surface**: White (#FFFFFF)
-- **Text Primary**: Slate 900 (#0F172A)
-- **Text Secondary**: Slate 500 (#64748B)
-- **Border**: Slate 200 (#E2E8F0)
-
-### Typography
-- **Font Family**: Inter (Google Fonts)
-- **Font Weights**: 300, 400, 500, 600, 700
-
-### Components
-- **Input Focus**: Blue ring with opacity
-- **Brand Gradient**: 135deg linear gradient from primary to primary-dark
-- **Custom Shadow**: Subtle shadow for elevation
+## Build configuration
+`frontend/vite.config.js` enables `react()` and `tailwindcss()` from `@tailwindcss/vite`. There is no separate Tailwind config or theme provider. Styling is primarily inline Tailwind utility classes plus the CSS variables above.

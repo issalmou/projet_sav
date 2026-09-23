@@ -5,13 +5,14 @@ import { Modal } from '../admin/ui'
 import ProductCard from './ProductCard'
 import CategoryFilter from './CategoryFilter'
 import { getWarrantyInfo } from './WarrantyBadge'
+import { useI18n } from '../../i18n/useI18n'
 
 const WARRANTY_FILTERS = [
-  { value: null, label: 'Toutes', icon: null },
-  { value: 'active', label: 'Sous garantie', icon: ShieldCheck, color: 'text-teal-600' },
-  { value: 'expiring', label: 'Expire bientôt', icon: ShieldAlert, color: 'text-orange-600' },
-  { value: 'expired', label: 'Expirée', icon: ShieldX, color: 'text-red-600' },
-  { value: 'none', label: 'Sans garantie', icon: ShieldQuestion, color: 'text-slate-400' }
+  { value: null, labelKey: 'ps.all', icon: null },
+  { value: 'active', labelKey: 'ps.underWarranty', icon: ShieldCheck, color: 'text-teal-600' },
+  { value: 'expiring', labelKey: 'ps.expiringSoon', icon: ShieldAlert, color: 'text-orange-600' },
+  { value: 'expired', labelKey: 'ps.expired', icon: ShieldX, color: 'text-red-600' },
+  { value: 'none', labelKey: 'ps.noWarranty', icon: ShieldQuestion, color: 'text-slate-400' }
 ]
 
 const inputClass =
@@ -23,14 +24,15 @@ export default function ProductSelector({
   onSelect,
   selectedId = null,
   mode = 'modal',
-  anchorRef = null,
   showWarrantyFilter = true,
   filterWarranty = null,
-  placeholder = 'Rechercher par nom, référence ou marque...',
+  placeholder,
   multiple = false,
   selectedIds = []
 }) {
   const { products, searchProducts, categories } = useProducts()
+  const { t } = useI18n()
+  const resolvedPlaceholder = placeholder ?? t('ps.placeholder')
   const [query, setQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [warrantyFilter, setWarrantyFilter] = useState(filterWarranty)
@@ -126,7 +128,7 @@ export default function ProductSelector({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           className={`${inputClass} pl-10 ${query ? 'pr-10' : 'pr-4'}`}
           autoFocus
         />
@@ -165,7 +167,7 @@ export default function ProductSelector({
               >
                 {Icon && <Icon className={`w-3 h-3 ${isActive ? 'text-white' : wf.color}`} />}
                 {!Icon && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                {wf.label}
+                {wf.labelKey && t(wf.labelKey)}
                 <span className={`text-[10px] ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>{count}</span>
               </button>
             )
@@ -182,8 +184,8 @@ export default function ProductSelector({
             <div className="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center mb-2.5">
               <Search className="w-5 h-5 text-slate-300" />
             </div>
-            <p className="text-sm font-semibold text-slate-700">Aucun produit trouvé</p>
-            <p className="text-xs text-slate-400 mt-1">Essayez avec d'autres mots-clés</p>
+            <p className="text-sm font-semibold text-slate-700">{t('ps.none')}</p>
+            <p className="text-xs text-slate-400 mt-1">{t('ps.noKeywords')}</p>
           </div>
         ) : (
           results.map((product, idx) => (
@@ -203,13 +205,13 @@ export default function ProductSelector({
 
       <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
         <span>
-          {results.length} produit{results.length > 1 ? 's' : ''}
+          {t('ps.resultCount', { count: results.length })}
         </span>
         {mode === 'modal' && (
           <span className="flex items-center gap-2">
-            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">↑↓</kbd> naviguer
-            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">Entrée</kbd> sélectionner
-            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">Esc</kbd> fermer
+            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">↑↓</kbd> {t('ps.navigate')}
+            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">Entrée</kbd> {t('ps.select')}
+            <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-mono">Esc</kbd> {t('ps.close')}
           </span>
         )}
       </div>
@@ -229,13 +231,15 @@ export default function ProductSelector({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Sélectionner un produit" wide>
+    <Modal open={open} onClose={onClose} title={t('ps.selectTitle')} wide>
       {selectorContent}
     </Modal>
   )
 }
 
-export function ProductSelectorTrigger({ product, onClick, onRemove, placeholder = 'Sélectionner un produit' }) {
+export function ProductSelectorTrigger({ product, onClick, onRemove, placeholder }) {
+  const { t } = useI18n()
+  const resolvedPlaceholder = placeholder ?? t('ps.selectPlaceholder')
   return (
     <button
       type="button"
@@ -249,7 +253,7 @@ export function ProductSelectorTrigger({ product, onClick, onRemove, placeholder
           </div>
           <div className="flex-1 min-w-0 text-left">
             <p className="text-sm font-semibold text-slate-900 truncate">{product.name}</p>
-            <p className="text-xs text-slate-500">Réf: {product.reference}</p>
+            <p className="text-xs text-slate-500">{t('pc.ref', { ref: product.reference })}</p>
           </div>
           {onRemove && (
             <button
@@ -265,7 +269,7 @@ export function ProductSelectorTrigger({ product, onClick, onRemove, placeholder
       ) : (
         <div className="w-full flex items-center gap-2 px-4 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-sm text-slate-500 hover:bg-slate-100 hover:border-slate-400 transition-all">
           <ShieldQuestion className="w-4 h-4" />
-          {placeholder}
+          {resolvedPlaceholder}
           <ChevronDown className="w-4 h-4 ml-auto text-slate-400" />
         </div>
       )}

@@ -1,14 +1,15 @@
 import { X, AlertTriangle } from 'lucide-react'
+import { useI18n } from '../../i18n/useI18n'
 
 export const inputClass =
-  'w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all'
+  'w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 dark:placeholder-slate-400'
 
 export function PageHeader({ title, subtitle, actions }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
-        {subtitle && <p className="text-slate-500 mt-1">{subtitle}</p>}
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight dark:text-slate-100">{title}</h1>
+        {subtitle && <p className="text-slate-500 mt-1 dark:text-slate-400">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-3 shrink-0">{actions}</div>}
     </div>
@@ -37,7 +38,7 @@ export function Toggle({ checked, onChange, disabled }) {
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-        checked ? 'bg-blue-600' : 'bg-slate-300'
+        checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'
       } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       <span
@@ -81,23 +82,26 @@ export function ConfirmModal({
   open,
   onClose,
   onConfirm,
-  title = 'Confirmer la suppression',
+  title,
   message,
-  confirmLabel = 'Supprimer',
+  confirmLabel,
   danger = true,
 }) {
+  const { t } = useI18n()
+  const resolvedTitle = title ?? t('common.delete')
+  const resolvedConfirmLabel = confirmLabel ?? t('common.delete')
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={title}
+      title={resolvedTitle}
       footer={
         <>
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
           >
-            Annuler
+            {t('common.cancel')}
           </button>
           <button
             onClick={() => {
@@ -108,7 +112,7 @@ export function ConfirmModal({
               danger ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </button>
         </>
       }

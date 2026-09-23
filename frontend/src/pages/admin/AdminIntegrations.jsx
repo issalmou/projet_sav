@@ -20,6 +20,7 @@ import {
 } from '../../components/admin/ui'
 import { useToast } from '../../services/toast'
 import { IntegrationBadge } from '../../components/admin/badges'
+import { useI18n } from '../../i18n/useI18n'
 
 const PROVIDERS = [
   { id: 'salesforce', label: 'Salesforce CRM', type: 'crm' },
@@ -31,26 +32,16 @@ const PROVIDERS = [
 ]
 
 const SYNC_DIRECTIONS = [
-  { value: 'bidirectional', label: 'Bidirectionnelle' },
-  { value: 'oneway_in', label: 'Entrante (CRM → Plateforme)' },
-  { value: 'oneway_out', label: 'Sortante (Plateforme → CRM)' },
+  { value: 'bidirectional', labelKey: 'admin.integrations.dirBidirectional' },
+  { value: 'oneway_in', labelKey: 'admin.integrations.dirIn' },
+  { value: 'oneway_out', labelKey: 'admin.integrations.dirOut' },
 ]
 
 const SYNC_FREQUENCIES = [
-  { value: 'realtime', label: 'Temps réel' },
-  { value: 'hourly', label: 'Chaque heure' },
-  { value: 'daily', label: 'Quotidien' },
+  { value: 'realtime', labelKey: 'admin.integrations.freqRealtime' },
+  { value: 'hourly', labelKey: 'admin.integrations.freqHourly' },
+  { value: 'daily', labelKey: 'admin.integrations.freqDaily' },
 ]
-
-function formatRelative(iso) {
-  if (!iso) return 'Jamais'
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `Il y a ${mins} min`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `Il y a ${hours} h`
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
 
 function AdminIntegrations() {
   const {
@@ -61,6 +52,7 @@ function AdminIntegrations() {
     deleteIntegration,
   } = useAdmin()
   const { toastEl, showToast } = useToast()
+  const { t, timeAgo } = useI18n()
 
   const [editTarget, setEditTarget] = useState(null)
   const [editForm, setEditForm] = useState(null)
@@ -82,7 +74,7 @@ function AdminIntegrations() {
 
   const saveEdit = () => {
     if (!editForm?.name.trim()) {
-      showToast('Le nom de l\u2019intégration est obligatoire.', 'error')
+      showToast(t('admin.integrations.nameRequired'), 'error')
       return
     }
     updateIntegration(editTarget.id, {
@@ -94,12 +86,12 @@ function AdminIntegrations() {
     })
     setEditTarget(null)
     setEditForm(null)
-    showToast(`Configuration de ${editForm.name} enregistrée`)
+    showToast(t('admin.integrations.saved', { name: editForm.name }))
   }
 
   const handleAdd = () => {
     if (!addForm.name.trim()) {
-      showToast('Le nom de l\u2019intégration est obligatoire.', 'error')
+      showToast(t('admin.integrations.nameRequired'), 'error')
       return
     }
     const provider = PROVIDERS.find((p) => p.id === addForm.provider)
@@ -110,7 +102,7 @@ function AdminIntegrations() {
     })
     setAddOpen(false)
     setAddForm({ provider: 'salesforce', name: '' })
-    showToast('Intégration ajoutée. Configurez-la pour la connecter.')
+    showToast(t('admin.integrations.added'))
   }
 
   const testConnection = (integration) => {
@@ -121,7 +113,7 @@ function AdminIntegrations() {
         lastSync: new Date().toISOString(),
       })
       setTestingId(null)
-      showToast(`Connexion à ${integration.name} établie avec succès`)
+      showToast(t('admin.integrations.connectedToast', { name: integration.name }))
     }, 1500)
   }
 
@@ -132,15 +124,15 @@ function AdminIntegrations() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Intégrations CRM/ERP"
-        subtitle="Connectez vos systèmes externes pour synchroniser vos données clients."
+        title={t('admin.integrations.title')}
+        subtitle={t('admin.integrations.subtitle')}
         actions={
           <button
             onClick={() => setAddOpen(true)}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
           >
             <Plus className="w-5 h-5" />
-            Ajouter une intégration
+            {t('admin.integrations.add')}
           </button>
         }
       />
@@ -153,7 +145,7 @@ function AdminIntegrations() {
           </div>
           <div>
             <p className="text-2xl font-bold text-slate-900">{enabledCount}</p>
-            <p className="text-xs text-slate-500">Connectées / actives</p>
+            <p className="text-xs text-slate-500">{t('admin.integrations.connected')}</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -162,7 +154,7 @@ function AdminIntegrations() {
           </div>
           <div>
             <p className="text-2xl font-bold text-slate-900">{crmCount}</p>
-            <p className="text-xs text-slate-500">Intégrations CRM</p>
+            <p className="text-xs text-slate-500">{t('admin.integrations.crm')}</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -171,7 +163,7 @@ function AdminIntegrations() {
           </div>
           <div>
             <p className="text-2xl font-bold text-slate-900">{erpCount}</p>
-            <p className="text-xs text-slate-500">Intégrations ERP</p>
+            <p className="text-xs text-slate-500">{t('admin.integrations.erp')}</p>
           </div>
         </div>
       </div>
@@ -183,9 +175,9 @@ function AdminIntegrations() {
             <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
               <Plug className="w-8 h-8 text-slate-300" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900 mb-1">Aucune intégration</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-1">{t('admin.integrations.none')}</h3>
             <p className="text-xs text-slate-500 max-w-xs">
-              Ajoutez une intégration CRM ou ERP pour connecter vos systèmes.
+              {t('admin.integrations.empty')}
             </p>
           </div>
         </div>
@@ -217,22 +209,22 @@ function AdminIntegrations() {
                 <div className="space-y-2 text-xs text-slate-500">
                   <div className="flex items-center gap-2">
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{int.apiUrl || 'URL API non définie'}</span>
+                    <span className="truncate">{int.apiUrl || t('admin.integrations.noApiUrl')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Synchronisation : {SYNC_DIRECTIONS.find((d) => d.value === int.syncDirection)?.label}</span>
-                    <span>Fréquence : {SYNC_FREQUENCIES.find((f) => f.value === int.syncFrequency)?.label}</span>
+                    <span>{t('admin.integrations.syncLabel', { dir: SYNC_DIRECTIONS.find((d) => d.value === int.syncDirection)?.labelKey ? t(SYNC_DIRECTIONS.find((d) => d.value === int.syncDirection).labelKey) : '-' })}</span>
+                    <span>{t('admin.integrations.freqLabel', { freq: SYNC_FREQUENCIES.find((f) => f.value === int.syncFrequency)?.labelKey ? t(SYNC_FREQUENCIES.find((f) => f.value === int.syncFrequency).labelKey) : '-' })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Dernière synchronisation :</span>
-                    <span className="font-semibold text-slate-700">{formatRelative(int.lastSync)}</span>
+                    <span>{t('admin.integrations.lastSyncLabel')}</span>
+                    <span className="font-semibold text-slate-700">{int.lastSync ? timeAgo(int.lastSync) : t('admin.integrations.never')}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-semibold text-slate-600">
-                      {int.enabled ? 'Activée' : 'Désactivée'}
+                      {int.enabled ? t('admin.integrations.enabled') : t('admin.integrations.disabled')}
                     </span>
                     <Toggle checked={int.enabled} onChange={() => toggleIntegration(int.id)} />
                   </div>
@@ -245,25 +237,25 @@ function AdminIntegrations() {
                       {isTesting ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Test...
+                          {t('admin.integrations.testing')}
                         </>
                       ) : (
                         <>
                           <RefreshCw className="w-3.5 h-3.5" />
-                          Tester
+                          {t('admin.integrations.test')}
                         </>
                       )}
                     </button>
                     <button
                       onClick={() => openEdit(int)}
-                      title="Configurer"
+                      title={t('admin.integrations.configure')}
                       className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     >
                       <Settings2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setDeleteTarget(int)}
-                      title="Supprimer"
+                      title={t('admin.integrations.delete')}
                       className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -283,7 +275,7 @@ function AdminIntegrations() {
           setEditTarget(null)
           setEditForm(null)
         }}
-        title={`Configurer ${editTarget?.name || ''}`}
+        title={t('admin.integrations.configureTitle', { name: editTarget?.name || '' })}
         footer={
           <>
             <button
@@ -293,21 +285,21 @@ function AdminIntegrations() {
               }}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
             <button
               onClick={saveEdit}
               className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-lg shadow-blue-500/20"
             >
               <CheckCircle2 className="w-4 h-4" />
-              Enregistrer
+              {t('common.save')}
             </button>
           </>
         }
       >
         {editForm && (
           <div className="space-y-5">
-            <Field label="Nom de l'intégration" required>
+            <Field label={t('admin.integrations.name')} required>
               <input
                 type="text"
                 value={editForm.name}
@@ -315,26 +307,26 @@ function AdminIntegrations() {
                 className={inputClass}
               />
             </Field>
-            <Field label="URL de l'API">
+            <Field label={t('admin.integrations.apiUrl')}>
               <input
                 type="text"
                 value={editForm.apiUrl}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, apiUrl: e.target.value }))}
-                placeholder="https://api.exemple.com/v1"
+                placeholder={t('admin.integrations.apiUrlPlaceholder')}
                 className={inputClass}
               />
             </Field>
-            <Field label="Clé API" hint="La clé existante reste masquée si le champ est laissé vide.">
+            <Field label={t('admin.integrations.apiKey')} hint={t('admin.integrations.apiKeyHint')}>
               <input
                 type="password"
                 value={editForm.apiKey}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, apiKey: e.target.value }))}
-                placeholder="Entrez une nouvelle clé API..."
+                placeholder={t('admin.integrations.apiKeyPlaceholder')}
                 className={inputClass}
               />
             </Field>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Field label="Direction de synchronisation">
+              <Field label={t('admin.integrations.syncDirection')}>
                 <select
                   value={editForm.syncDirection}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, syncDirection: e.target.value }))}
@@ -342,12 +334,12 @@ function AdminIntegrations() {
                 >
                   {SYNC_DIRECTIONS.map((d) => (
                     <option key={d.value} value={d.value}>
-                      {d.label}
+                      {t(d.labelKey)}
                     </option>
                   ))}
                 </select>
               </Field>
-              <Field label="Fréquence de synchronisation">
+              <Field label={t('admin.integrations.syncFrequency')}>
                 <select
                   value={editForm.syncFrequency}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, syncFrequency: e.target.value }))}
@@ -355,7 +347,7 @@ function AdminIntegrations() {
                 >
                   {SYNC_FREQUENCIES.map((f) => (
                     <option key={f.value} value={f.value}>
-                      {f.label}
+                      {t(f.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -372,7 +364,7 @@ function AdminIntegrations() {
           setAddOpen(false)
           setAddForm({ provider: 'salesforce', name: '' })
         }}
-        title="Ajouter une intégration"
+        title={t('admin.integrations.add')}
         footer={
           <>
             <button
@@ -382,20 +374,20 @@ function AdminIntegrations() {
               }}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleAdd}
               className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-lg shadow-blue-500/20"
             >
               <Plus className="w-4 h-4" />
-              Ajouter
+              {t('admin.integrations.addButton')}
             </button>
           </>
         }
       >
         <div className="space-y-5">
-          <Field label="Fournisseur" required>
+          <Field label={t('admin.integrations.provider')} required>
             <div className="grid grid-cols-2 gap-2">
               {PROVIDERS.map((p) => (
                 <button
@@ -416,12 +408,12 @@ function AdminIntegrations() {
               ))}
             </div>
           </Field>
-          <Field label="Nom de l'intégration" required>
+          <Field label={t('admin.integrations.name')} required>
             <input
               type="text"
               value={addForm.name}
               onChange={(e) => setAddForm((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="Ex : Salesforce Production"
+              placeholder={t('admin.integrations.namePlaceholder')}
               className={inputClass}
             />
           </Field>
@@ -431,15 +423,15 @@ function AdminIntegrations() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        title="Supprimer l'intégration"
+        title={t('admin.integrations.deleteTitle')}
         message={
           deleteTarget
-            ? `Voulez-vous vraiment supprimer « ${deleteTarget.name} » ? La synchronisation sera interrompue.`
+            ? t('admin.integrations.deleteMsg', { name: deleteTarget.name })
             : ''
         }
         onConfirm={() => {
           deleteIntegration(deleteTarget.id)
-          showToast('L\u2019intégration a été supprimée')
+          showToast(t('admin.integrations.deleted'))
         }}
       />
 

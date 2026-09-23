@@ -14,6 +14,7 @@ function ResponsableSAVTicketCreate() {
   return (
     <TicketForm
       mode="create"
+      basePath="/responsable-sav/tickets"
       onSubmit={handleSubmit}
       submitLabel="Créer le ticket"
     />

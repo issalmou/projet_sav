@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --primary: #2563EB;
   --primary-dark: #1E40AF;
@@ -10,6 +12,121 @@
   --surface: #FFFFFF;
   --border: #E2E8F0;
 }
+
+.dark {
+  --primary: #3B82F6;
+  --primary-dark: #2563EB;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --background: #0F172A;
+  --surface: #1E293B;
+  --border: #334155;
+  color-scheme: dark;
+}
+
+/* --- Thème sombre global ---
+   Carte neutre : fond #0F172A, cartes #1E293B, texte #F1F5F9, bordures #334155. */
+.dark .bg-white { background-color: #1E293B; }
+.dark .bg-slate-50 { background-color: #0F172A; }
+.dark .bg-slate-100 { background-color: #26344D; }
+.dark .bg-slate-200 { background-color: #334155; }
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 { border-color: #334155; }
+.dark .divide-slate-50,
+.dark .divide-slate-100,
+.dark .divide-slate-200 { border-color: #334155; }
+.dark .ring-slate-100 { --tw-ring-color: #334155; }
+
+.dark .text-slate-900,
+.dark .text-slate-800 { color: #F1F5F9; }
+.dark .text-slate-700 { color: #E2E8F0; }
+.dark .text-slate-600 { color: #CBD5E1; }
+.dark .text-slate-500,
+.dark .text-slate-400 { color: #94A3B8; }
+
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/60,
+.dark .bg-slate-50\/70 { background-color: rgba(255, 255, 255, 0.06); }
+
+/* Fond accent principal plus lumineux en sombre : #2563EB -> #3B82F6 */
+.dark .bg-blue-600 { background-color: #3B82F6; }
+.dark .hover\:bg-blue-700:hover { background-color: #2563EB; }
+
+/* Pastels (-50) et bordures (-100/-200) adoucis, textes -600/-700 éclaircis */
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.12); }
+.dark .border-blue-100, .dark .border-blue-200 { border-color: rgba(59, 130, 246, 0.28); }
+.dark .text-blue-600 { color: #60A5FA; }
+.dark .text-blue-700 { color: #93C5FD; }
+
+.dark .bg-teal-50 { background-color: rgba(20, 184, 166, 0.12); }
+.dark .border-teal-100, .dark .border-teal-200 { border-color: rgba(20, 184, 166, 0.28); }
+.dark .text-teal-600 { color: #2DD4BF; }
+.dark .text-teal-700 { color: #5EEAD4; }
+
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.12); }
+.dark .border-amber-100, .dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.28); }
+.dark .text-amber-600 { color: #FBBF24; }
+.dark .text-amber-700 { color: #FCD34D; }
+
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.12); }
+.dark .border-emerald-100, .dark .border-emerald-200 { border-color: rgba(16, 185, 129, 0.28); }
+.dark .text-emerald-600 { color: #34D399; }
+.dark .text-emerald-700 { color: #6EE7B7; }
+
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.12); }
+.dark .border-red-100, .dark .border-red-200 { border-color: rgba(239, 68, 68, 0.28); }
+.dark .text-red-600 { color: #F87171; }
+.dark .text-red-700, .dark .text-red-800 { color: #FCA5A5; }
+
+.dark .bg-purple-50 { background-color: rgba(168, 85, 247, 0.12); }
+.dark .border-purple-100, .dark .border-purple-200 { border-color: rgba(168, 85, 247, 0.28); }
+.dark .text-purple-600 { color: #C084FC; }
+.dark .text-purple-700 { color: #D8B4FE; }
+
+.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.12); }
+.dark .border-indigo-100, .dark .border-indigo-200 { border-color: rgba(99, 102, 241, 0.28); }
+.dark .text-indigo-600 { color: #818CF8; }
+.dark .text-indigo-700 { color: #A5B4FC; }
+
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.12); }
+.dark .border-orange-100, .dark .border-orange-200 { border-color: rgba(249, 115, 22, 0.28); }
+.dark .text-orange-600 { color: #FB923C; }
+.dark .text-orange-700 { color: #FDBA74; }
+
+.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.12); }
+.dark .border-rose-100, .dark .border-rose-200 { border-color: rgba(244, 63, 94, 0.28); }
+.dark .text-rose-600 { color: #FB7185; }
+.dark .text-rose-700 { color: #FDA4AF; }
+
+.dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.12); }
+.dark .border-violet-100, .dark .border-violet-200 { border-color: rgba(139, 92, 246, 0.28); }
+.dark .text-violet-600 { color: #A78BFA; }
+.dark .text-violet-700 { color: #C4B5FD; }
+
+/* Bouton de bascule : garde la pastille blanche sur fond sombre */
+.dark button[role="switch"] > span { background-color: #ffffff !important; }
+
+/* Survols « blancs » : translucides comme la sidebar (bg-white/5) en mode sombre */
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-200:hover,
+.dark .hover\:bg-slate-50\/50:hover,
+.dark .hover\:bg-slate-50\/70:hover { background-color: rgba(255, 255, 255, 0.06); }
+
+.dark .hover\:bg-blue-50:hover,
+.dark .hover\:bg-blue-50\/40:hover,
+.dark .hover\:bg-blue-100:hover { background-color: rgba(59, 130, 246, 0.15); }
+.dark .hover\:bg-red-50:hover,
+.dark .hover\:bg-red-100:hover { background-color: rgba(239, 68, 68, 0.15); }
+.dark .hover\:bg-amber-50:hover,
+.dark .hover\:bg-amber-100:hover { background-color: rgba(245, 158, 11, 0.15); }
+.dark .hover\:bg-teal-50:hover { background-color: rgba(20, 184, 166, 0.15); }
+.dark .hover\:bg-emerald-100:hover { background-color: rgba(16, 185, 129, 0.15); }
+.dark .hover\:bg-indigo-100:hover { background-color: rgba(99, 102, 241, 0.15); }
+.dark .hover\:bg-purple-100:hover { background-color: rgba(168, 85, 247, 0.15); }
+.dark .hover\:bg-rose-100:hover { background-color: rgba(244, 63, 94, 0.15); }
 
 body {
   font-family: 'Inter', sans-serif;

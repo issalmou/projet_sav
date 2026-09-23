@@ -13,7 +13,6 @@ import {
   ArrowUp,
   ArrowDown,
   RefreshCw,
-  MessageSquare,
   ArrowUpCircle
 } from 'lucide-react'
 import { useTickets } from '../../contexts/useTickets'
@@ -56,8 +55,6 @@ function StatCard({ icon: Icon, label, value, color }) {
 
 function TicketRow({ ticket }) {
   const navigate = useNavigate()
-  const messageCount = ticket.messages?.length ?? 0
-
   return (
     <div
       onClick={() => navigate(`/agent/tickets/${ticket.id}`)}
@@ -66,9 +63,14 @@ function TicketRow({ ticket }) {
       <span className="text-xs font-bold text-slate-400 w-20 shrink-0">#{ticket.id}</span>
 
       <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
         <h4 className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
           {ticket.title}
         </h4>
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          {ticket.source === 'chatbot' ? 'Chatbot' : 'Responsable SAV'}
+        </span>
+        </div>
         <p className="text-xs text-slate-500 truncate mt-0.5">{ticket.description}</p>
       </div>
 
@@ -87,11 +89,6 @@ function TicketRow({ ticket }) {
       <div className="hidden sm:flex items-center gap-1.5 shrink-0">
         <Calendar className="w-3 h-3 text-slate-400" />
         <span className="text-xs text-slate-500">{formatDate(ticket.createdAt)}</span>
-      </div>
-
-      <div className="hidden md:flex items-center gap-1 shrink-0">
-        <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-        <span className="text-xs text-slate-500">{messageCount}</span>
       </div>
 
       <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0" />
@@ -123,12 +120,12 @@ function AgentTicketsList() {
   const { tickets } = useTickets()
   const { user } = useAuth()
 
-  const myTickets = tickets.filter((t) => 
-    t.assignee === user?.name || 
-    t.assignee === user?.email ||
-    t.status === 'open' ||
-    t.status === 'escalated'
-  )
+  const myTickets = tickets.filter((t) => (
+    !t.assigneeId && !t.assignee_id ||
+    String(t.assigneeId || t.assignee_id) === String(user?.id) ||
+    t.assignee === user?.name ||
+    t.assignee === user?.email
+  ))
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -411,10 +408,7 @@ function AgentTicketsList() {
               else updateSort('newest')
             }} />
           </span>
-          <span className="hidden md:inline shrink-0 w-12 text-center">
-            <MessageSquare className="w-3 h-3 inline" />
-          </span>
-          <span className="w-4 shrink-0" />
+             <span className="w-4 shrink-0" />
         </div>
 
         {/* Ticket List */}

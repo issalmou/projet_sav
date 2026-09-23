@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Plus,
@@ -13,31 +13,14 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useAdmin } from '../../contexts/useAdmin'
-import { ROLE_ORDER, ROLES } from '../../contexts/roles'
+import { useAuth } from '../../contexts/useAuth'
+import { ROLES, manageableRoles } from '../../contexts/roles'
 import { PageHeader, EmptyState, ConfirmModal } from '../../components/admin/ui'
 import { useToast } from '../../services/toast'
 import { RoleBadge, StatusBadge } from '../../components/admin/badges'
+import { useI18n } from '../../i18n/useI18n'
 
 const PAGE_SIZE = 8
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-}
-
-function formatRelative(iso) {
-  if (!iso) return 'Jamais'
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `Il y a ${mins} min`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `Il y a ${hours} h`
-  return formatDate(iso)
-}
 
 function StatCard({ icon: Icon, label, value, color }) {
   return (
@@ -53,9 +36,11 @@ function StatCard({ icon: Icon, label, value, color }) {
   )
 }
 
-function AdminUsers() {
+function AdminUsers({ basePath = '/admin' }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t, formatDate, timeAgo } = useI18n()
+  const { user } = useAuth()
   const { users, updateUser, deleteUser } = useAdmin()
   const { toastEl, showToast } = useToast()
 
@@ -64,14 +49,17 @@ function AdminUsers() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const handledToastRef = useRef(null)
 
   useEffect(() => {
     const state = location.state
-    if (state?.toast) {
+    const toastKey = state?.toast ? `${location.key}:${state.toast.message}` : null
+    if (state?.toast && handledToastRef.current !== toastKey) {
+      handledToastRef.current = toastKey
       showToast(state.toast.message, state.toast.type)
       window.history.replaceState({}, '')
     }
-  }, [location.state, showToast])
+  }, [location.key, location.state, showToast])
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -97,8 +85,8 @@ function AdminUsers() {
     updateUser(user.id, { status: user.status === 'active' ? 'inactive' : 'active' })
     showToast(
       user.status === 'active'
-        ? `Le compte ${user.name} a été désactivé`
-        : `Le compte ${user.name} a été activé`
+        ? t('admin.users.disabled', { name: user.name })
+        : t('admin.users.enabled', { name: user.name })
     )
   }
 
@@ -111,27 +99,27 @@ function AdminUsers() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Utilisateurs"
-        subtitle="Gérez les comptes et les accès de la plateforme."
+<PageHeader
+        title={t('admin.nav.users')}
+        subtitle={t('admin.users.subtitle')}
         actions={
           <button
-            onClick={() => navigate('/admin/users/new')}
+            onClick={() => navigate(`${basePath}/users/new`)}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
           >
             <Plus className="w-5 h-5" />
-            Ajouter un utilisateur
+            {t('admin.users.add')}
           </button>
         }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={UsersIcon} label="Total utilisateurs" value={users.length} color="bg-blue-50 text-blue-600" />
-        <StatCard icon={UserCheck} label="Actifs" value={users.filter((u) => u.status === 'active').length} color="bg-teal-50 text-teal-600" />
-        <StatCard icon={UserX} label="Inactifs" value={users.filter((u) => u.status === 'inactive').length} color="bg-slate-100 text-slate-500" />
+        <StatCard icon={UsersIcon} label={t('admin.users.total')} value={users.length} color="bg-blue-50 text-blue-600" />
+        <StatCard icon={UserCheck} label={t('admin.users.active')} value={users.filter((u) => u.status === 'active').length} color="bg-teal-50 text-teal-600" />
+        <StatCard icon={UserX} label={t('admin.users.inactive')} value={users.filter((u) => u.status === 'inactive').length} color="bg-slate-100 text-slate-500" />
         <StatCard
           icon={UsersIcon}
-          label="Administrateurs"
+          label={t('admin.users.admins')}
           value={users.filter((u) => u.role === 'admin').length}
           color="bg-violet-50 text-violet-600"
         />
@@ -148,7 +136,7 @@ function AdminUsers() {
                 setSearch(e.target.value)
                 setPage(1)
               }}
-              placeholder="Rechercher par nom, email ou service..."
+              placeholder={t('admin.users.search')}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
@@ -162,8 +150,8 @@ function AdminUsers() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Tous les rôles</option>
-              {ROLE_ORDER.map((r) => (
+              <option value="all">{t('admin.users.allRoles')}</option>
+              {manageableRoles(user).map((r) => (
                 <option key={r} value={r}>
                   {ROLES[r].label}
                 </option>
@@ -181,16 +169,16 @@ function AdminUsers() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Tous les statuts</option>
-              <option value="active">Actifs</option>
-              <option value="inactive">Inactifs</option>
+              <option value="all">{t('admin.users.allStatuses')}</option>
+              <option value="active">{t('admin.users.active')}</option>
+              <option value="inactive">{t('admin.users.inactive')}</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
           <button
             onClick={resetFilters}
-            title="Réinitialiser les filtres"
+            title={t('admin.users.resetFilters')}
             className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -198,30 +186,30 @@ function AdminUsers() {
         </div>
 
         <div className="px-5 py-3 flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-          <span className="flex-1">Utilisateur</span>
-          <span className="shrink-0 w-32">Rôle</span>
-          <span className="shrink-0 w-24">Statut</span>
-          <span className="hidden lg:inline shrink-0 w-24">Dernière connexion</span>
-          <span className="hidden md:inline shrink-0 w-24">Créé le</span>
-          <span className="shrink-0 w-20 text-center">Actions</span>
+          <span className="flex-1">{t('admin.users.user')}</span>
+          <span className="shrink-0 w-32">{t('admin.users.role')}</span>
+          <span className="shrink-0 w-24">{t('common.statu')}</span>
+          <span className="hidden lg:inline shrink-0 w-24">{t('admin.users.lastLogin')}</span>
+          <span className="hidden md:inline shrink-0 w-24">{t('admin.users.createdOn')}</span>
+          <span className="shrink-0 w-20 text-center">{t('admin.users.actions')}</span>
         </div>
 
         {filtered.length === 0 ? (
           <EmptyState
             icon={UsersIcon}
-            title="Aucun utilisateur trouvé"
+            title={t('admin.users.none')}
             message={
               users.length === 0
-                ? "Aucun utilisateur pour le moment. Ajoutez-en un pour commencer."
-                : "Aucun utilisateur ne correspond à vos critères."
+                ? t('admin.users.empty')
+                : t('admin.users.emptyFiltered')
             }
             action={
               users.length === 0 && (
                 <button
-                  onClick={() => navigate('/admin/users/new')}
+                  onClick={() => navigate(`${basePath}/users/new`)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
                 >
-                  Ajouter un utilisateur
+                  {t('admin.users.add')}
                 </button>
               )
             }
@@ -255,23 +243,23 @@ function AdminUsers() {
               <div className="shrink-0 w-24">
                 <StatusBadge status={u.status} />
               </div>
-              <div className="hidden lg:inline shrink-0 w-24 text-xs text-slate-500">
-                {formatRelative(u.lastLogin)}
+<div className="hidden lg:inline shrink-0 w-24 text-xs text-slate-500">
+                {u.lastLogin ? timeAgo(u.lastLogin) : t('admin.users.never')}
               </div>
               <div className="hidden md:inline shrink-0 w-24 text-xs text-slate-500">
                 {formatDate(u.createdAt)}
               </div>
               <div className="shrink-0 w-20 flex items-center justify-end gap-1">
                 <button
-                  onClick={() => navigate(`/admin/users/${u.id}/edit`)}
-                  title="Modifier"
+                  onClick={() => navigate(`${basePath}/users/${u.id}/edit`)}
+                  title={t('common.modify')}
                   className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => toggleStatus(u)}
-                  title={u.status === 'active' ? 'Désactiver' : 'Activer'}
+                  title={u.status === 'active' ? t('common.disable') : t('common.enable')}
                   className={`p-2 rounded-lg transition-colors ${
                     u.status === 'active'
                       ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
@@ -282,7 +270,7 @@ function AdminUsers() {
                 </button>
                 <button
                   onClick={() => setDeleteTarget(u)}
-                  title="Supprimer"
+                  title={t('common.delete')}
                   className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -296,12 +284,11 @@ function AdminUsers() {
       {filtered.length > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-slate-500">
-            Affichage de{' '}
-            <span className="font-semibold text-slate-700">{(currentPage - 1) * PAGE_SIZE + 1}</span> à{' '}
-            <span className="font-semibold text-slate-700">
-              {Math.min(currentPage * PAGE_SIZE, filtered.length)}
-            </span>{' '}
-            sur {filtered.length} utilisateur(s)
+            {t('admin.users.showing', {
+              from: (currentPage - 1) * PAGE_SIZE + 1,
+              to: Math.min(currentPage * PAGE_SIZE, filtered.length),
+              total: filtered.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -309,7 +296,7 @@ function AdminUsers() {
               disabled={currentPage === 1}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Précédent
+              {t('tickets.previous')}
             </button>
             {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
               <button
@@ -329,7 +316,7 @@ function AdminUsers() {
               disabled={currentPage === pageCount}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Suivant
+              {t('tickets.next')}
             </button>
           </div>
         </div>
@@ -338,15 +325,15 @@ function AdminUsers() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        title="Supprimer l'utilisateur"
+        title={t('admin.users.deleteTitle')}
         message={
           deleteTarget
-            ? `Voulez-vous vraiment supprimer le compte de ${deleteTarget.name} ? Cette action est irréversible.`
+            ? t('admin.users.deleteMsg', { name: deleteTarget.name })
             : ''
         }
         onConfirm={() => {
           deleteUser(deleteTarget.id)
-          showToast(`Le compte de ${deleteTarget.name} a été supprimé`)
+          showToast(t('admin.users.deleted', { name: deleteTarget.name }))
         }}
       />
 

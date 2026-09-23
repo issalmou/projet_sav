@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, get_db_session
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RefreshRequest, Token
-from app.schemas.user import UserPublic
+from app.schemas.user import UserPublic, UserUpdate
 from app.services.auth_service import AuthService
+from app.services.user_service import UserService
 
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+SELF_SERVICE_FORBIDDEN_FIELDS = {"role_id", "is_active", "is_superuser"}
 
 
 @router.get("/status", status_code=status.HTTP_200_OK)
@@ -52,6 +55,52 @@ async def read_current_user(current_user: Annotated[User, Depends(get_current_us
     """Retourne le profil de l'utilisateur actuellement authentifié."""
 
     return current_user
+
+
+@router.patch("/me", response_model=UserPublic, status_code=status.HTTP_200_OK)
+async def patch_current_user(
+    payload: UserUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Met à jour partiellement le profil de l'utilisateur connecté."""
+
+    provided_fields = set(payload.model_dump(exclude_unset=True).keys())
+    if provided_fields & SELF_SERVICE_FORBIDDEN_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot change your own role or account status",
+        )
+
+    try:
+        updated = await UserService(db).update_user(current_user.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return updated
+
+
+@router.put("/me", response_model=UserPublic, status_code=status.HTTP_200_OK)
+async def put_current_user(
+    payload: UserUpdate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> User:
+    """Remplace le profil (dont le mot de passe) de l'utilisateur connecté."""
+
+    provided_fields = set(payload.model_dump(exclude_unset=True).keys())
+    if provided_fields & SELF_SERVICE_FORBIDDEN_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot change your own role or account status",
+        )
+
+    try:
+        updated = await UserService(db).update_user(current_user.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return updated
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK)

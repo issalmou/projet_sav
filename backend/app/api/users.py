@@ -5,8 +5,8 @@ Règles d'accès (voir core/permissions.py) :
   rôle et son statut de compte (role_id, is_active, is_superuser).
 - Le staff (administrateur, responsable SAV) gère les autres comptes dans
   la limite de son périmètre : un responsable SAV ne gère que les clients
-  et les techniciens ; un administrateur gère tout sauf les autres
-  administrateurs, sauf s'il est super admin (is_superuser=True).
+  et les techniciens ; un administrateur gère tous les comptes, y compris
+  les autres administrateurs.
 """
 from typing import Annotated
 from uuid import UUID

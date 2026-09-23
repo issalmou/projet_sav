@@ -1,9 +1,6 @@
-import { API_URL } from '../api/auth'
-
-// URL du serveur WebSocket. Surchargeable via VITE_WS_URL, sinon dérivée de
-// l'URL de l'API (http -> ws) en pointant sur /ws/notifications.
-export const WS_URL =
-  import.meta.env.VITE_WS_URL || `${API_URL.replace(/^http/, 'ws')}/ws/notifications`
+// Le backend actuel n'expose pas encore l'endpoint WebSocket. Une URL doit
+// donc être fournie explicitement quand cette fonctionnalité est disponible.
+export const WS_URL = import.meta.env.VITE_WS_URL || null
 
 export const WS_STATUS = {
   CONNECTING: 'connecting',
@@ -63,6 +60,15 @@ export class NotificationSocket {
     if (!this.shouldReconnect || !this.token) return
 
     this._clearReconnectTimer()
+
+    // Ferme proprement l'éventuelle socket existante pour éviter les
+    // connexions en double.
+    if (this.socket) {
+      this.socket.onclose = null
+      this.socket.close()
+      this.socket = null
+    }
+
     this._setStatus(WS_STATUS.CONNECTING)
 
     try {
@@ -108,6 +114,9 @@ export class NotificationSocket {
       this.send({ type: 'pong' })
       return
     }
+
+    // Réponse au heartbeat : rien à afficher.
+    if (payload && payload.type === 'pong') return
 
     // Acquittement de connexion : rien à afficher.
     if (payload && payload.type === 'connected') return

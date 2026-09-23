@@ -10,13 +10,13 @@ import {
   ChevronDown,
   RefreshCw,
   ShieldCheck, ShieldAlert, ShieldX, ShieldQuestion,
-  Image,
 } from 'lucide-react'
 import { useProducts } from '../../contexts/useProducts'
 import { PRODUCT_CATEGORIES } from '../../contexts/ProductsContext'
 import { PageHeader, EmptyState, ConfirmModal } from '../../components/admin/ui'
 import { useToast } from '../../services/toast'
 import { getWarrantyInfo } from '../../components/products/WarrantyBadge'
+import { useI18n } from '../../i18n/useI18n'
 
 const PAGE_SIZE = 8
 
@@ -49,20 +49,6 @@ const WARRANTY_COLORS = {
   none: 'text-slate-400 bg-slate-50',
 }
 
-function formatPrice(price) {
-  if (!price && price !== 0) return '—'
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price)
-}
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-}
-
 function StatCard({ icon: Icon, label, value, color }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 custom-shadow">
@@ -77,9 +63,10 @@ function StatCard({ icon: Icon, label, value, color }) {
   )
 }
 
-export default function AdminProducts() {
+export default function AdminProducts({ basePath = '/admin' }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { t, formatDate } = useI18n()
   const { products, deleteProduct } = useProducts()
   const { toastEl, showToast } = useToast()
 
@@ -138,24 +125,24 @@ export default function AdminProducts() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Produits"
-        subtitle="Gérez le catalogue de produits du parc SAV."
+        title={t('products.title')}
+        subtitle={t('admin.products.subtitle')}
         actions={
           <button
-            onClick={() => navigate('/admin/products/new')}
+            onClick={() => navigate(`${basePath}/products/new`)}
             className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2 transition-all active:scale-[0.98]"
           >
             <Plus className="w-5 h-5" />
-            Ajouter un produit
+            {t('products.add')}
           </button>
         }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={Package} label="Total produits" value={products.length} color="bg-blue-50 text-blue-600" />
-        <StatCard icon={ShieldCheck} label="Sous garantie" value={productCounts.active} color="bg-teal-50 text-teal-600" />
-        <StatCard icon={ShieldAlert} label="Garantie bientôt" value={productCounts.expiring} color="bg-orange-50 text-orange-600" />
-        <StatCard icon={ShieldX} label="Garantie expirée" value={productCounts.expired} color="bg-red-50 text-red-600" />
+        <StatCard icon={Package} label={t('admin.products.total')} value={products.length} color="bg-blue-50 text-blue-600" />
+        <StatCard icon={ShieldCheck} label={t('products.underWarranty')} value={productCounts.active} color="bg-teal-50 text-teal-600" />
+        <StatCard icon={ShieldAlert} label={t('admin.products.expiring')} value={productCounts.expiring} color="bg-orange-50 text-orange-600" />
+        <StatCard icon={ShieldX} label={t('products.expired')} value={productCounts.expired} color="bg-red-50 text-red-600" />
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 custom-shadow">
@@ -169,7 +156,7 @@ export default function AdminProducts() {
                 setSearch(e.target.value)
                 setPage(1)
               }}
-              placeholder="Rechercher par nom, référence, marque ou S/N..."
+              placeholder={t('admin.products.search')}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
           </div>
@@ -183,7 +170,7 @@ export default function AdminProducts() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Toutes catégories</option>
+              <option value="all">{t('admin.products.allCategories')}</option>
               {PRODUCT_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
@@ -202,18 +189,18 @@ export default function AdminProducts() {
               }}
               className="appearance-none pl-3 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value="all">Toutes garanties</option>
-              <option value="active">Sous garantie</option>
-              <option value="expiring">Expire bientôt</option>
-              <option value="expired">Expirée</option>
-              <option value="none">Sans garantie</option>
+              <option value="all">{t('admin.products.allWarranties')}</option>
+              <option value="active">{t('products.underWarranty')}</option>
+              <option value="expiring">{t('products.expiringSoon')}</option>
+              <option value="expired">{t('products.expired')}</option>
+              <option value="none">{t('products.noWarranty')}</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
           <button
             onClick={resetFilters}
-            title="Réinitialiser les filtres"
+            title={t('admin.products.resetFilters')}
             className="p-2.5 bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
@@ -221,30 +208,29 @@ export default function AdminProducts() {
         </div>
 
         <div className="px-5 py-3 flex items-center gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-          <span className="flex-1 min-w-0">Produit</span>
-          <span className="shrink-0 w-28">Catégorie</span>
-          <span className="shrink-0 w-24">Prix</span>
-          <span className="shrink-0 w-28">Garantie</span>
-          <span className="hidden lg:inline shrink-0 w-24">Créé le</span>
-          <span className="shrink-0 w-20 text-center">Actions</span>
+          <span className="flex-1 min-w-0">{t('admin.products.colName')}</span>
+          <span className="shrink-0 w-28">{t('common.category')}</span>
+          <span className="shrink-0 w-28">{t('admin.products.colWarranty')}</span>
+          <span className="hidden lg:inline shrink-0 w-24">{t('admin.products.createdOn')}</span>
+          <span className="shrink-0 w-20 text-center">{t('admin.products.actions')}</span>
         </div>
 
         {filtered.length === 0 ? (
           <EmptyState
             icon={Package}
-            title="Aucun produit trouvé"
+            title={t('products.none')}
             message={
               products.length === 0
-                ? "Aucun produit pour le moment. Ajoutez-en un pour commencer."
-                : "Aucun produit ne correspond à vos critères."
+                ? t('admin.products.empty')
+                : t('admin.products.emptyFiltered')
             }
             action={
               products.length === 0 && (
                 <button
-                  onClick={() => navigate('/admin/products/new')}
+                  onClick={() => navigate(`${basePath}/products/new`)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition-colors"
                 >
-                  Ajouter un produit
+                  {t('products.add')}
                 </button>
               )
             }
@@ -278,7 +264,7 @@ export default function AdminProducts() {
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-slate-900 truncate">{p.name}</p>
                     <p className="text-xs text-slate-500 truncate">
-                      Réf: {p.reference} {p.brand && `• ${p.brand}`}
+                      {t('pd.ref', { ref: p.reference })} {p.brand && `• ${p.brand}`}
                     </p>
                   </div>
                 </div>
@@ -290,14 +276,10 @@ export default function AdminProducts() {
                   </span>
                 </div>
 
-                <div className="shrink-0 w-24 text-sm font-bold text-slate-900">
-                  {formatPrice(p.price)}
-                </div>
-
                 <div className="shrink-0 w-28">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${warrantyColor}`}>
                     <WarrantyIcon className="w-3 h-3" />
-                    {warranty.label}
+                    {t(warranty.labelKey)}
                   </span>
                 </div>
 
@@ -307,15 +289,15 @@ export default function AdminProducts() {
 
                 <div className="shrink-0 w-20 flex items-center justify-end gap-1">
                   <button
-                    onClick={() => navigate(`/admin/products/${p.id}/edit`)}
-                    title="Modifier"
+                    onClick={() => navigate(`${basePath}/products/${p.id}/edit`)}
+                    title={t('common.modify')}
                     className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setDeleteTarget(p)}
-                    title="Supprimer"
+                    title={t('admin.documents.delete')}
                     className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -330,12 +312,11 @@ export default function AdminProducts() {
       {filtered.length > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-slate-500">
-            Affichage de{' '}
-            <span className="font-semibold text-slate-700">{(currentPage - 1) * PAGE_SIZE + 1}</span> à{' '}
-            <span className="font-semibold text-slate-700">
-              {Math.min(currentPage * PAGE_SIZE, filtered.length)}
-            </span>{' '}
-            sur {filtered.length} produit(s)
+            {t('admin.products.showing', {
+              from: (currentPage - 1) * PAGE_SIZE + 1,
+              to: Math.min(currentPage * PAGE_SIZE, filtered.length),
+              total: filtered.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -343,7 +324,7 @@ export default function AdminProducts() {
               disabled={currentPage === 1}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Précédent
+              {t('tickets.previous')}
             </button>
             {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
               <button
@@ -363,7 +344,7 @@ export default function AdminProducts() {
               disabled={currentPage === pageCount}
               className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Suivant
+              {t('tickets.next')}
             </button>
           </div>
         </div>
@@ -372,15 +353,15 @@ export default function AdminProducts() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        title="Supprimer le produit"
+        title={t('pd.deleteTitle')}
         message={
           deleteTarget
-            ? `Voulez-vous vraiment supprimer "${deleteTarget.name}" ? Cette action est irréversible.`
+            ? t('pd.deleteMessage', { name: deleteTarget.name })
             : ''
         }
         onConfirm={() => {
           deleteProduct(deleteTarget.id)
-          showToast(`Le produit "${deleteTarget.name}" a été supprimé`)
+          showToast(t('admin.products.deleted', { name: deleteTarget.name }))
         }}
       />
 

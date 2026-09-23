@@ -1,4 +1,4 @@
-const backendUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
+const backendUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 export const API_URL = backendUrl.endsWith('/api/v1') ? backendUrl : `${backendUrl}/api/v1`
 
 export async function loginRequest({ email, password }) {
@@ -12,7 +12,11 @@ export async function loginRequest({ email, password }) {
     let message = `Authentification impossible (${response.status})`
     try {
       const body = await response.json()
-      if (body?.detail) message = body.detail
+      if (typeof body?.detail === 'string') {
+        message = body.detail
+      } else if (Array.isArray(body?.detail)) {
+        message = body.detail.map((item) => item.msg).filter(Boolean).join(', ') || message
+      }
     } catch {
       // keep default message
     }

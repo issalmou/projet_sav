@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ChevronRight,
   ArrowUpCircle,
-  MessageSquare,
   Timer
 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
@@ -47,7 +46,12 @@ function AgentOverview() {
   const { user } = useAuth()
   const { tickets } = useTickets()
 
-  const myTickets = tickets.filter((t) => t.assignee === user?.name || t.assignee === user?.email)
+  const myTickets = tickets.filter((t) => (
+    !t.assigneeId && !t.assignee_id ||
+    String(t.assigneeId || t.assignee_id) === String(user?.id) ||
+    t.assignee === user?.name ||
+    t.assignee === user?.email
+  ))
   const allTickets = tickets
 
   const myOpen = myTickets.filter((t) => t.status === 'open').length
@@ -58,7 +62,7 @@ function AgentOverview() {
   const totalOpen = allTickets.filter((t) => t.status === 'open').length
   const totalInProgress = allTickets.filter((t) => t.status === 'in_progress').length
 
-  const recentTickets = allTickets
+  const recentTickets = myTickets
     .filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'escalated')
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 5)
@@ -184,12 +188,6 @@ function AgentOverview() {
                   <div className="flex items-center gap-2 mt-2">
                     <StatusBadge status={ticket.status} />
                     <PriorityBadge priority={ticket.priority} />
-                    {ticket.messages?.length > 0 && (
-                      <span className="flex items-center gap-1 text-xs text-slate-400">
-                        <MessageSquare className="w-3 h-3" />
-                        {ticket.messages.length}
-                      </span>
-                    )}
                   </div>
                 </div>
                 <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors shrink-0 mt-2" />

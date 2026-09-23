@@ -1,24 +1,32 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import TicketForm from './TicketForm'
 import { useTickets } from '../../contexts/useTickets'
+import { useAuth } from '../../contexts/useAuth'
+import { useI18n } from '../../i18n/useI18n'
 
-function TicketEdit() {
+function TicketEdit({ basePath = '/tickets' }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const { getTicket, updateTicket } = useTickets()
+  const { user } = useAuth()
+  const { t } = useI18n()
 
   const ticket = getTicket(id)
+  const source = ticket?.source || ticket?.creation_source || ticket?.origin
+  const canAgentEdit = user?.role !== 'agent' || ['chatbot', 'responsable_sav'].includes(source)
 
-  if (!ticket) {
+  if (!ticket || !canAgentEdit) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-center">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 mb-1">Ticket introuvable</h2>
+<h2 className="text-lg font-bold text-slate-900 mb-1">
+              {!ticket ? t('td.notFound') : t('tf.editNotAllowed')}
+            </h2>
           <button
-            onClick={() => navigate('/tickets')}
+             onClick={() => navigate(basePath)}
             className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors"
           >
-            Retour à la liste
+            {t('common.backToList')}
           </button>
         </div>
       </div>
@@ -27,7 +35,7 @@ function TicketEdit() {
 
   const handleSubmit = (values) => {
     updateTicket(ticket.id, values)
-    navigate(`/tickets/${ticket.id}`)
+    navigate(`${basePath}/${ticket.id}`)
   }
 
   return (
@@ -35,7 +43,8 @@ function TicketEdit() {
       mode="edit"
       initialValues={ticket}
       onSubmit={handleSubmit}
-      submitLabel="Enregistrer les modifications"
+      submitLabel={t('tf.submitEdit')}
+      basePath={basePath}
     />
   )
 }

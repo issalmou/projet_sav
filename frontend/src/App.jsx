@@ -6,9 +6,9 @@ import { ProductsProvider } from './contexts/ProductsContext'
 import { NotificationsProvider } from './contexts/NotificationsContext'
 import { AdminProvider } from './contexts/AdminContext'
 import { ToastProvider } from './services/toast'
+import { LanguageProvider } from './i18n/LanguageContext'
 import { can, homeFor } from './contexts/roles'
 import Login from './components/auth/Login'
-import Signup from './components/auth/Signup'
 import ForgotPassword from './components/auth/forgot-password'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
@@ -22,6 +22,8 @@ import TicketCreate from './pages/tickets/TicketCreate'
 import TicketEdit from './pages/tickets/TicketEdit'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminOverview from './pages/admin/AdminOverview'
+import AdminTickets from './pages/admin/AdminTickets'
+import AdminTicketCreate from './pages/admin/AdminTicketCreate'
 import AdminUsers from './pages/admin/AdminUsers'
 import UserForm from './pages/admin/UserForm'
 import AdminDocuments from './pages/admin/AdminDocuments'
@@ -61,6 +63,13 @@ function Guard({ permission, children }) {
   return children
 }
 
+function RoleGuard({ role, children }) {
+  const { user, isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.role !== role) return <Navigate to={homeFor(user)} replace />
+  return children
+}
+
 function ClientGuard({ children }) {
   const { user } = useAuth()
   if (user?.role === 'client') {
@@ -74,7 +83,6 @@ function AppRoutes() {
     <Routes>
       {/* Auth Routes */}
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
       
       {/* Protected Routes with Layout */}
@@ -84,7 +92,7 @@ function AppRoutes() {
         <Route path="/tickets" element={<TicketsList />} />
         <Route path="/tickets/new" element={<ClientGuard><TicketCreate /></ClientGuard>} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
-        <Route path="/tickets/:id/edit" element={<TicketEdit />} />
+         <Route path="/tickets/:id/edit" element={<ClientGuard><TicketEdit /></ClientGuard>} />
         <Route path="/products" element={<Products />} />
         <Route path="/products/:id" element={<ProductDetail />} />
         <Route path="/knowledge" element={<div className="p-8"><h1 className="text-2xl font-bold">Knowledge Base - Coming Soon</h1></div>} />
@@ -104,21 +112,25 @@ function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <Guard permission="admin.view">
+          <RoleGuard role="admin">
             <AdminLayout />
-          </Guard>
+          </RoleGuard>
         }
       >
-        <Route index element={<AdminOverview />} />
-        <Route path="users" element={<Guard permission="users.manage"><AdminUsers /></Guard>} />
-        <Route path="users/new" element={<Guard permission="users.manage"><UserForm /></Guard>} />
-        <Route path="users/:id/edit" element={<Guard permission="users.manage"><UserForm /></Guard>} />
-        <Route path="documents" element={<Guard permission="documents.manage"><AdminDocuments /></Guard>} />
-        <Route path="documents/new" element={<Guard permission="documents.manage"><DocumentForm /></Guard>} />
-        <Route path="documents/:id/edit" element={<Guard permission="documents.manage"><DocumentForm /></Guard>} />
-        <Route path="products" element={<Guard permission="documents.manage"><AdminProducts /></Guard>} />
-        <Route path="products/new" element={<Guard permission="documents.manage"><ProductForm /></Guard>} />
-        <Route path="products/:id/edit" element={<Guard permission="documents.manage"><ProductForm /></Guard>} />
+<Route index element={<AdminOverview />} />
+        <Route path="tickets" element={<AdminTickets />} />
+        <Route path="tickets/new" element={<AdminTicketCreate />} />
+        <Route path="tickets/:id" element={<TicketDetail basePath="/admin/tickets" />} />
+        <Route path="tickets/:id/edit" element={<TicketEdit basePath="/admin/tickets" />} />
+        <Route path="users" element={<Guard permission="users.manage"><AdminUsers basePath="/admin" /></Guard>} />
+        <Route path="users/new" element={<Guard permission="users.manage"><UserForm basePath="/admin" /></Guard>} />
+        <Route path="users/:id/edit" element={<Guard permission="users.manage"><UserForm basePath="/admin" /></Guard>} />
+        <Route path="documents" element={<Guard permission="documents.manage"><AdminDocuments basePath="/admin" /></Guard>} />
+        <Route path="documents/new" element={<Guard permission="documents.manage"><DocumentForm basePath="/admin" /></Guard>} />
+        <Route path="documents/:id/edit" element={<Guard permission="documents.manage"><DocumentForm basePath="/admin" /></Guard>} />
+        <Route path="products" element={<Guard permission="documents.manage"><AdminProducts basePath="/admin" /></Guard>} />
+        <Route path="products/new" element={<Guard permission="documents.manage"><ProductForm basePath="/admin" /></Guard>} />
+        <Route path="products/:id/edit" element={<Guard permission="documents.manage"><ProductForm basePath="/admin" /></Guard>} />
         <Route path="integrations" element={<Guard permission="integrations.manage"><AdminIntegrations /></Guard>} />
         <Route path="logs" element={<Guard permission="logs.view"><AdminLogs /></Guard>} />
         <Route path="settings" element={<Guard permission="settings.manage"><AdminSettings /></Guard>} />
@@ -128,9 +140,9 @@ function AppRoutes() {
       <Route
         path="/responsable-sav"
         element={
-          <Guard permission="analytics.view">
+          <RoleGuard role="manager">
             <ResponsableSAVLayout />
-          </Guard>
+          </RoleGuard>
         }
       >
         <Route index element={<ResponsableSAVOverview />} />
@@ -138,41 +150,42 @@ function AppRoutes() {
         <Route path="tickets" element={<TicketsList basePath="/responsable-sav/tickets" />} />
         <Route path="tickets/new" element={<ResponsableSAVTicketCreate />} />
         <Route path="tickets/:id" element={<TicketDetail basePath="/responsable-sav/tickets" />} />
+        <Route path="tickets/:id/edit" element={<TicketEdit basePath="/responsable-sav/tickets" />} />
         <Route
           path="users"
-          element={<Guard permission="users.manage"><AdminUsers /></Guard>}
+           element={<Guard permission="users.manage"><AdminUsers basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="users/new"
-          element={<Guard permission="users.manage"><UserForm /></Guard>}
+           element={<Guard permission="users.manage"><UserForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="users/:id/edit"
-          element={<Guard permission="users.manage"><UserForm /></Guard>}
+           element={<Guard permission="users.manage"><UserForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="documents"
-          element={<Guard permission="documents.manage"><AdminDocuments /></Guard>}
+           element={<Guard permission="documents.manage"><AdminDocuments basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="documents/new"
-          element={<Guard permission="documents.manage"><DocumentForm /></Guard>}
+           element={<Guard permission="documents.manage"><DocumentForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="documents/:id/edit"
-          element={<Guard permission="documents.manage"><DocumentForm /></Guard>}
+           element={<Guard permission="documents.manage"><DocumentForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="products"
-          element={<Guard permission="documents.manage"><AdminProducts /></Guard>}
+           element={<Guard permission="documents.manage"><AdminProducts basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="products/new"
-          element={<Guard permission="documents.manage"><ProductForm /></Guard>}
+           element={<Guard permission="documents.manage"><ProductForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="products/:id/edit"
-          element={<Guard permission="documents.manage"><ProductForm /></Guard>}
+           element={<Guard permission="documents.manage"><ProductForm basePath="/responsable-sav" /></Guard>}
         />
         <Route
           path="logs"
@@ -184,22 +197,31 @@ function AppRoutes() {
       <Route
         path="/agent"
         element={
-          <Guard permission="analytics.view">
+          <RoleGuard role="agent">
             <AgentLayout />
-          </Guard>
+          </RoleGuard>
         }
       >
         <Route index element={<AgentOverview />} />
         <Route path="tickets" element={<AgentTicketsList />} />
         <Route path="tickets/:id" element={<AgentTicketDetail />} />
+        <Route path="tickets/:id/edit" element={<TicketEdit basePath="/agent/tickets" />} />
         <Route
           path="analytics"
           element={<Guard permission="analytics.view"><Analytics /></Guard>}
         />
         <Route
           path="documents"
-          element={<Guard permission="documents.manage"><AdminDocuments /></Guard>}
-        />
+           element={<Guard permission="documents.manage"><AdminDocuments basePath="/agent" /></Guard>}
+         />
+         <Route
+           path="documents/new"
+           element={<Guard permission="documents.manage"><DocumentForm basePath="/agent" /></Guard>}
+         />
+         <Route
+           path="documents/:id/edit"
+           element={<Guard permission="documents.manage"><DocumentForm basePath="/agent" /></Guard>}
+         />
         <Route
           path="logs"
           element={<Guard permission="logs.view"><AdminLogs /></Guard>}
@@ -217,6 +239,7 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        <LanguageProvider>
         <NotificationsProvider>
           <AdminProvider>
             <TicketsProvider>
@@ -227,6 +250,7 @@ function App() {
             </TicketsProvider>
           </AdminProvider>
         </NotificationsProvider>
+        </LanguageProvider>
       </AuthProvider>
     </Router>
   )

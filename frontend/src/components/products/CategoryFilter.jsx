@@ -1,5 +1,6 @@
 import { PRODUCT_CATEGORIES } from '../../contexts/ProductsContext'
 import { Monitor, Server, Wifi, Printer, HardDrive, Headphones, Package } from 'lucide-react'
+import { useI18n } from '../../i18n/useI18n'
 
 const ICON_MAP = {
   monitor: Monitor,
@@ -32,6 +33,7 @@ const INACTIVE_COLORS = {
 }
 
 export default function CategoryFilter({ value, onChange, productCounts = {} }) {
+  const { t } = useI18n()
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <button
@@ -43,7 +45,7 @@ export default function CategoryFilter({ value, onChange, productCounts = {} }) 
             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
         }`}
       >
-        Tous
+        {t('cf.all')}
         {productCounts.total > 0 && (
           <span className={`ml-1.5 text-[10px] ${value === null ? 'text-blue-200' : 'text-slate-400'}`}>
             {productCounts.total}
@@ -67,7 +69,7 @@ export default function CategoryFilter({ value, onChange, productCounts = {} }) 
             }`}
           >
             <Icon className="w-3.5 h-3.5" />
-            {cat.label}
+            {t(`pcat.${cat.value}`)}
             {count > 0 && (
               <span className={`text-[10px] ${isActive ? 'opacity-70' : 'opacity-50'}`}>
                 {count}

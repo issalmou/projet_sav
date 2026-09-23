@@ -47,8 +47,8 @@ def get_role_name(user: User) -> str | None:
 def can_manage_role(actor: User, target_role_name: str | None) -> bool:
     """Vérifie si `actor` (un membre du staff) peut gérer un utilisateur ayant `target_role_name`.
 
-    - Le super admin (`is_superuser=True`) gère tout, y compris les autres administrateurs.
-    - Un administrateur normal gère tout, sauf un autre compte administrateur.
+    - Le super admin (`is_superuser=True`) gère tout.
+    - Un administrateur gère tous les comptes, y compris les autres administrateurs.
     - Un responsable SAV ne gère que les clients et les techniciens.
     """
 
@@ -58,7 +58,7 @@ def can_manage_role(actor: User, target_role_name: str | None) -> bool:
     actor_role = get_role_name(actor)
 
     if actor_role == RoleName.ADMINISTRATEUR.value:
-        return target_role_name != RoleName.ADMINISTRATEUR.value
+        return True
 
     if actor_role == RoleName.RESPONSABLE_SAV.value:
         return target_role_name is None or target_role_name in RESPONSABLE_SAV_MANAGEABLE_ROLES

@@ -13,8 +13,10 @@ import {
   User,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/useAuth'
+import { useTickets } from '../../contexts/useTickets'
 import { useNotifications } from '../../contexts/useNotifications'
-import { roleLabel } from '../../contexts/roles'
+import { roleLabel, resolveRole } from '../../contexts/roles'
+import { useI18n } from '../../i18n/useI18n'
 
 const LEVEL_CONFIG = {
   success: { icon: CheckCircle2, badge: 'bg-emerald-50 text-emerald-600' },
@@ -23,20 +25,8 @@ const LEVEL_CONFIG = {
   error: { icon: AlertCircle, badge: 'bg-red-50 text-red-600' },
 }
 
-function timeAgo(iso) {
-  if (!iso) return ''
-  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (seconds < 60) return 'à l\'instant'
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `il y a ${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `il y a ${hours} h`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `il y a ${days} j`
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
 function NotificationDropdown({ onNavigate }) {
+  const { t, timeAgo } = useI18n()
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications()
   const recent = notifications.slice(0, 8)
 
@@ -44,7 +34,7 @@ function NotificationDropdown({ onNavigate }) {
     <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
         <p className="text-sm font-bold text-slate-900">
-          Notifications
+          {t('topbar.notifications')}
           {unreadCount > 0 && (
             <span className="ml-2 px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
               {unreadCount}
@@ -56,13 +46,13 @@ function NotificationDropdown({ onNavigate }) {
           disabled={unreadCount === 0}
           className="text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Tout marquer comme lu
+          {t('topbar.markAllRead')}
         </button>
       </div>
 
       {recent.length === 0 ? (
         <div className="px-4 py-10 text-center">
-          <p className="text-sm text-slate-500">Aucune notification</p>
+          <p className="text-sm text-slate-500">{t('topbar.noNotifications')}</p>
         </div>
       ) : (
         <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
@@ -106,7 +96,7 @@ function NotificationDropdown({ onNavigate }) {
           onClick={onNavigate}
           className="w-full py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
         >
-          Voir toutes les notifications
+          {t('topbar.seeAll')}
         </button>
       </div>
     </div>
@@ -115,12 +105,22 @@ function NotificationDropdown({ onNavigate }) {
 
 function TopNavBar() {
   const { user, logout } = useAuth()
+  const { t } = useI18n()
+  const { getUserTickets } = useTickets()
   const { unreadCount, connectionStatus } = useNotifications()
   const navigate = useNavigate()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
+  const [ticketSearch, setTicketSearch] = useState('')
   const dropdownRef = useRef(null)
   const bellRef = useRef(null)
+  const isClient = user?.role === 'client'
+  const matchingTickets = getUserTickets(user)
+    .filter((ticket) => {
+      const query = ticketSearch.trim().toLowerCase()
+      return query && ticket.title?.toLowerCase().includes(query)
+    })
+    .slice(0, 5)
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -144,16 +144,42 @@ function TopNavBar() {
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6">
       {/* Search Bar */}
-      <div className="flex-1 max-w-xl">
+      <div className="flex-1 max-w-xl relative">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Rechercher..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-          />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              value={isClient ? ticketSearch : undefined}
+              onChange={isClient ? (event) => setTicketSearch(event.target.value) : undefined}
+              placeholder={isClient ? t('topbar.searchTicket') : t('topbar.search')}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+          {isClient && ticketSearch.trim() && (
+            <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden z-40">
+              {matchingTickets.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-slate-500">{t('topbar.noTicketFound')}</p>
+              ) : (
+                matchingTickets.map((ticket) => (
+                  <button
+                    key={ticket.id}
+                    onClick={() => {
+                      setTicketSearch('')
+                      navigate(`/tickets/${ticket.id}`)
+                    }}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-blue-50 transition-colors"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800 truncate">{ticket.title}</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">#{ticket.id}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] font-bold text-blue-600">{t(`status.${ticket.status}`)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
-      </div>
 
       {/* Right Section */}
       <div className="flex items-center gap-4">
@@ -187,8 +213,8 @@ function TopNavBar() {
               {user?.initials || 'U'}
             </div>
             <div className="hidden md:block text-left">
-              <p className="text-sm font-semibold text-slate-900">{user?.name || 'Utilisateur'}</p>
-              <p className="text-xs text-slate-500">{roleLabel(user?.role) || 'Rôle'}</p>
+              <p className="text-sm font-semibold text-slate-900">{user?.name || t('topbar.user')}</p>
+              <p className="text-xs text-slate-500">{t(`role.${resolveRole(user?.role)}`) || roleLabel(user?.role) || t('topbar.role')}</p>
             </div>
             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -197,7 +223,7 @@ function TopNavBar() {
           {dropdownOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
               <div className="px-4 py-3 border-b border-slate-100">
-                <p className="text-sm font-semibold text-slate-900">{user?.name || 'Utilisateur'}</p>
+                <p className="text-sm font-semibold text-slate-900">{user?.name || t('topbar.user')}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{user?.email || ''}</p>
               </div>
               <button
@@ -205,14 +231,14 @@ function TopNavBar() {
                 className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 <User className="w-4 h-4" />
-                Mon profil
+                {t('topbar.profile')}
               </button>
               <button
                 onClick={() => { setDropdownOpen(false); navigate('/settings') }}
                 className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 <Settings className="w-4 h-4" />
-                Paramètres
+                {t('topbar.settings')}
               </button>
               <div className="border-t border-slate-100 mt-1 pt-1">
                 <button
@@ -220,7 +246,7 @@ function TopNavBar() {
                   className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
-                  Déconnexion
+                  {t('topbar.logout')}
                 </button>
               </div>
             </div>
